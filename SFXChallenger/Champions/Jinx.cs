@@ -20,10 +20,21 @@ namespace SFXChallenger.Champions
 
         private Spell UltimateExplosion { get; set; }
 
-        protected override ItemFlags ItemFlags => ItemFlags.Offensive | ItemFlags.Defensive | ItemFlags.Flee;
+        protected override ItemFlags ItemFlags
+        {
+            get
+            {
+                return ItemFlags.Offensive | ItemFlags.Defensive | ItemFlags.Flee;
+            }
+        }
 
-        protected override ItemUsageType ItemUsage => ItemUsageType.AfterAttack;
-
+        protected override ItemUsageType ItemUsage
+        {
+            get
+            {
+                return ItemUsageType.AfterAttack;
+            }
+        }
         protected override void OnLoad()
         {
             GapcloserManager.OnGapcloser += GapcloserManager_OnGapcloser;
@@ -107,12 +118,12 @@ namespace SFXChallenger.Champions
         protected override void AddToMenu()
         {
             // Combo menu
-            var comboMenu = Menu.AddSubMenu(new Menu("Combo", $"{Menu.Name}.combo"));
-            comboMenu.AddItem(new MenuItem($"{comboMenu.Name}.q", "Use Q").SetValue(true));
-            comboMenu.AddItem(new MenuItem($"{comboMenu.Name}.w", "Use W").SetValue(true));
-            comboMenu.AddItem(new MenuItem($"{comboMenu.Name}.e", "Use E").SetValue(true));
+            var comboMenu = Menu.AddSubMenu(new Menu("Combo", string.Format("{0}.combo", Menu.Name)));
+            comboMenu.AddItem(new MenuItem(string.Format("{0}.q", comboMenu.Name), "Use Q").SetValue(true));
+            comboMenu.AddItem(new MenuItem(string.Format("{0}.w", comboMenu.Name), "Use W").SetValue(true));
+            comboMenu.AddItem(new MenuItem(string.Format("{0}.e", comboMenu.Name), "Use E").SetValue(true));
 
-            var comboHitChanceMenu = comboMenu.AddSubMenu(new Menu("Hitchance", $"{comboMenu.Name}.hitchance"));
+            var comboHitChanceMenu = comboMenu.AddSubMenu(new Menu("Hitchance", string.Format("{0}.hitchance", comboMenu.Name)));
             var comboHitChanceDictionary = new Dictionary<string, HitChance>
             {
                 { "W", HitChance.VeryHigh },
@@ -127,11 +138,11 @@ namespace SFXChallenger.Champions
             });
 
             // Harass menu
-            var harassMenu = Menu.AddSubMenu(new Menu("Harass", $"{Menu.Name}.harass"));
-            harassMenu.AddItem(new MenuItem($"{harassMenu.Name}.q", "Use Q").SetValue(true));
-            harassMenu.AddItem(new MenuItem($"{harassMenu.Name}.w", "Use W").SetValue(true));
+            var harassMenu = Menu.AddSubMenu(new Menu("Harass", string.Format("{0}.harass", Menu.Name)));
+            harassMenu.AddItem(new MenuItem(string.Format("{0}.q", harassMenu.Name), "Use Q").SetValue(true));
+            harassMenu.AddItem(new MenuItem(string.Format("{0}.w", harassMenu.Name), "Use W").SetValue(true));
 
-            var harassHitChanceMenu = harassMenu.AddSubMenu(new Menu("Hitchance", $"{harassMenu.Name}.hitchance"));
+            var harassHitChanceMenu = harassMenu.AddSubMenu(new Menu("Hitchance", string.Format("{0}.hitchance", harassMenu.Name)));
             var harassHitChanceDictionary = new Dictionary<string, HitChance>
             {
                 { "W", HitChance.High }
@@ -151,9 +162,9 @@ namespace SFXChallenger.Champions
             });
 
             // Laneclear menu
-            var laneclearMenu = Menu.AddSubMenu(new Menu("Lane Clear", $"{Menu.Name}.lane-clear"));
-            laneclearMenu.AddItem(new MenuItem($"{laneclearMenu.Name}.q", "Use Q").SetValue(true));
-            laneclearMenu.AddItem(new MenuItem($"{laneclearMenu.Name}.q-min", "Q Min.").SetValue(new Slider(3, 1, 5)));
+            var laneclearMenu = Menu.AddSubMenu(new Menu("Lane Clear", string.Format("{0}.lane-clear", Menu.Name)));
+            laneclearMenu.AddItem(new MenuItem(string.Format("{0}.q", laneclearMenu.Name), "Use Q").SetValue(true));
+            laneclearMenu.AddItem(new MenuItem(string.Format("{0}.q-min", laneclearMenu.Name), "Q Min.").SetValue(new Slider(3, 1, 5)));
 
             ResourceManager.AddToMenu(laneclearMenu, new ResourceManagerArgs("lane-clear-q", ResourceType.Mana, ResourceValueType.Percent, ResourceCheckType.Minimum)
             {
@@ -165,14 +176,14 @@ namespace SFXChallenger.Champions
             });
 
             // Flee menu
-            var fleeMenu = Menu.AddSubMenu(new Menu("Flee", $"{Menu.Name}.flee"));
-            fleeMenu.AddItem(new MenuItem($"{fleeMenu.Name}.e", "Use E").SetValue(true));
+            var fleeMenu = Menu.AddSubMenu(new Menu("Flee", string.Format("{0}.flee", Menu.Name)));
+            fleeMenu.AddItem(new MenuItem(string.Format("{0}.e", fleeMenu.Name), "Use E").SetValue(true));
 
             // Misc menu
-            var miscMenu = Menu.AddSubMenu(new Menu("Misc", $"{Menu.Name}.miscellaneous"));
+            var miscMenu = Menu.AddSubMenu(new Menu("Misc", string.Format("{0}.miscellaneous", Menu.Name)));
 
             // Gapcloser menu
-            var eGapcloserMenu = miscMenu.AddSubMenu(new Menu("E Gapcloser", $"{miscMenu.Name}.e-gapcloser"));
+            var eGapcloserMenu = miscMenu.AddSubMenu(new Menu("E Gapcloser", string.Format("{0}.e-gapcloser", miscMenu.Name)));
             GapcloserManager.AddToMenu(eGapcloserMenu, new HeroListManagerArgs("e-gapcloser")
             {
                 IsWhitelist = false,
