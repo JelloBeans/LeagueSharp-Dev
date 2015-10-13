@@ -10,7 +10,16 @@ using SFXChallenger.Library;
 using SFXChallenger.Library.Logger;
 using SFXChallenger.Managers;
 using SharpDX;
+using SFXChallenger.Helpers;
+
 using Spell = SFXChallenger.Wrappers.Spell;
+using TargetSelector = SFXChallenger.SFXTargetSelector.TargetSelector;
+using Orbwalking = SFXChallenger.Wrappers.Orbwalking;
+using MinionManager = SFXChallenger.Library.MinionManager;
+using MinionOrderTypes = SFXChallenger.Library.MinionOrderTypes;
+using MinionTeam = SFXChallenger.Library.MinionTeam;
+using MinionTypes = SFXChallenger.Library.MinionTypes;
+using SFXChallenger.Library.Extensions.NET;
 
 namespace SFXChallenger.Champions
 {
@@ -38,17 +47,19 @@ namespace SFXChallenger.Champions
         protected override void OnLoad()
         {
             GapcloserManager.OnGapcloser += GapcloserManager_OnGapcloser;
-        }
+            Orbwalking.BeforeAttack += Orbwalking_BeforeAttack;
+        }        
 
         protected override void SetupSpells()
         {
             Q = new Spell(SpellSlot.Q);
+            Q.SetSkillshot(0.5f, 100f, Player.BasicAttack.MissileSpeed, false, SkillshotType.SkillshotCircle);
 
             W = new Spell(SpellSlot.W, 1450f);
-            W.SetSkillshot(1.1f, 60f, 3300f, true, SkillshotType.SkillshotLine);
+            W.SetSkillshot(0.6f, 60f, 3300f, true, SkillshotType.SkillshotLine);
 
             E = new Spell(SpellSlot.E, 900f);
-            E.SetSkillshot(1.1f, 1f, 1750f, false, SkillshotType.SkillshotCircle);
+            E.SetSkillshot(0.7f, 120f, 1750f, false, SkillshotType.SkillshotCircle);
 
             R = new Spell(SpellSlot.R, 3200f);
             R.SetSkillshot(0.6f, 140f, 1700f, false, SkillshotType.SkillshotLine); // Set collision to false as we calculate collision our selves (radius impact)
@@ -85,17 +96,7 @@ namespace SFXChallenger.Champions
                 var damage = 0f;
                 if (ult && R.IsReady() && (!rangeCheck || R.IsInRange(target)))
                 {
-                    var level = R.Level;
-                    var percentHealth = 20f + (level * 5); // 25, 30, 35
-                    var targetMissingHealth = target.MaxHealth - target.Health;
-                    var percentMissingHealth = percentHealth / 100 * targetMissingHealth;
-
-                    var physicalDamageModifier = 15f + (level * 10) + 0.1 * Player.FlatPhysicalDamageMod; // 25, 35, 45
-                    var distanceDamageModifier = Math.Min((1 + Player.Distance(target.ServerPosition) / 15 * 0.09d), 10);
-
-                    var amount = percentMissingHealth + (physicalDamageModifier * distanceDamageModifier);
-
-                    damage += (float)Player.CalcDamage(target, Damage.DamageType.Physical, amount);
+                    damage += R.GetDamage(target);
                 }
 
                 if (!rangeCheck || target.Distance(Player) <= Orbwalking.GetRealAutoAttackRange(target) * 0.85f)
@@ -117,6 +118,8 @@ namespace SFXChallenger.Champions
 
         protected override void AddToMenu()
         {
+            _ultimateManager.AddToMenu(Menu);
+
             // Combo menu
             var comboMenu = Menu.AddSubMenu(new Menu("Combo", string.Format("{0}.combo", Menu.Name)));
             comboMenu.AddItem(new MenuItem(string.Format("{0}.q", comboMenu.Name), "Use Q").SetValue(true));
@@ -127,6 +130,7 @@ namespace SFXChallenger.Champions
             var comboHitChanceDictionary = new Dictionary<string, HitChance>
             {
                 { "W", HitChance.VeryHigh },
+                { "E", HitChance.VeryHigh },
                 { "R", HitChance.VeryHigh }
             };
             HitchanceManager.AddToMenu(comboHitChanceMenu, "combo", comboHitChanceDictionary);
@@ -207,10 +211,55 @@ namespace SFXChallenger.Champions
 
         protected override void OnPostUpdate()
         {
+            if (_ultimateManager.IsActive(UltimateModeType.Assisted) && R.IsReady())
+            {
+                if (_ultimateManager.ShouldMove(UltimateModeType.Assisted))
+                {
+                    Orbwalking.MoveTo(Game.CursorPos, Orbwalker.HoldAreaRadius);
+                }
+
+                if (!CastUltimate(UltimateModeType.Assisted, TargetSelector.GetTarget(R)))
+                {
+                    CastUltimateSingle(UltimateModeType.Assisted);
+                }
+            }
+
+            if (_ultimateManager.IsActive(UltimateModeType.Auto) && R.IsReady())
+            {
+                if (!CastUltimate(UltimateModeType.Auto, TargetSelector.GetTarget(R)))
+                {
+                    CastUltimateSingle(UltimateModeType.Auto);
+                }
+            }
         }
 
         protected override void Combo()
         {
+            var useW = Menu.Item(Menu.Name + ".combo.w").GetValue<bool>() && W.IsReady();
+            var useE = Menu.Item(Menu.Name + ".combo.e").GetValue<bool>() && E.IsReady();
+            var useR = _ultimateManager.IsActive(UltimateModeType.Combo) && R.IsReady();
+
+            if (useR)
+            {
+                var target = TargetSelector.GetTarget(R.Range, R.DamageType);
+                if (target != null)
+                {
+                    if (!CastUltimate(UltimateModeType.Combo, target))
+                    {
+                        CastUltimateSingle(UltimateModeType.Combo);
+                    }
+                }
+            }
+
+            if (useW)
+            {
+                Casting.SkillShot(W, W.GetHitChance("combo"));
+            }
+
+            if (useE)
+            {
+                Casting.SkillShot(E, E.GetHitChance("combo"));
+            }
         }
 
         protected override void Harass()
@@ -219,6 +268,34 @@ namespace SFXChallenger.Champions
 
         protected override void LaneClear()
         {
+            var fishBones = IsUsingFishbones();
+            var useQ = Menu.Item(Menu.Name + ".lane-clear.q").GetValue<bool>() && Q.IsReady();
+
+            if (!ResourceManager.Check("lane-clear-q"))
+            {
+                // Switch to minigun if we don't have the mana for fishbones
+                if (fishBones && useQ)
+                {
+                    Q.Cast();
+                }
+                return;
+            }
+
+            
+            if (useQ)
+            {
+                var fishBonesMinimum = Menu.Item(Menu.Name + ".lane-clear.q-min").GetValue<Slider>().Value;
+                var range = 575 + (25 * Q.Level); // Bonus Range: 75, 100, 125, 150, 175
+                var minions = MinionManager.GetMinions(range);
+                if (minions.Count >= fishBonesMinimum && !fishBones)
+                {
+                    Q.Cast();
+                }
+                else if (minions.Count < fishBonesMinimum && fishBones)
+                {
+                    Q.Cast();
+                }
+            }
         }
 
         protected override void JungleClear()
@@ -242,6 +319,29 @@ namespace SFXChallenger.Champions
                     args.End.Distance(Player.Position) <= E.Range)
                 {
                     E.Cast(args.End);
+                }
+            }
+            catch (Exception ex)
+            {
+                Global.Logger.AddItem(new LogItem(ex));
+            }
+        }
+
+        private void Orbwalking_BeforeAttack(Orbwalking.BeforeAttackEventArgs args)
+        {
+            try
+            { 
+                if (Orbwalker.ActiveMode == Orbwalking.OrbwalkingMode.LaneClear || Orbwalker.ActiveMode == Orbwalking.OrbwalkingMode.LastHit)
+                {
+                    if (IsUsingFishbones())
+                    {
+                        var bestMinion = BestFishBonesMinion();
+                        if (bestMinion != null && bestMinion.NetworkId != args.Target.NetworkId)
+                        {
+                            Orbwalker.ForceTarget(bestMinion);
+                            args.Process = false;
+                        }
+                    }
                 }
             }
             catch (Exception ex)
@@ -361,6 +461,46 @@ namespace SFXChallenger.Champions
             }
 
             return new Tuple<int, List<Obj_AI_Hero>, Vector3>(hits.Count, hits, castPosition);
+        }
+
+        private Obj_AI_Base BestFishBonesMinion()
+        {
+            var minions = MinionManager.GetMinions(float.MaxValue, MinionTypes.All, MinionTeam.NotAlly)
+                    .Where(Orbwalking.InAutoAttackRange)
+                    .ToList();
+
+            var possibilities = ListExtensions.ProduceEnumeration(minions.Select(p => p.ServerPosition.To2D()).ToList())
+                    .Where(p => p.Count > 0 && p.Count < 8)
+                    .ToList();
+
+            var hits = 0;
+            var center = Vector2.Zero;
+            var radius = float.MaxValue;
+
+            foreach (var possibility in possibilities)
+            {
+                var mec = MEC.GetMec(possibility);
+                if (mec.Radius < Q.Width * 1.5f)
+                {
+                    if (possibility.Count > hits || possibility.Count == hits && mec.Radius < radius)
+                    {
+                        hits = possibility.Count;
+                        radius = mec.Radius;
+                        center = mec.Center;
+                        if (hits == minions.Count)
+                        {
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (hits > 0 && !center.Equals(Vector2.Zero))
+            {
+                return minions.OrderBy(m => m.Position.Distance(center.To3D())).FirstOrDefault();
+            }
+
+            return null;
         }
     }
 }
