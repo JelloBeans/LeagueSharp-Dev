@@ -81,6 +81,10 @@ namespace SFXChallenger
                             Core.Init(_champion, 50);
                             Core.Boot();
                         }
+                        else
+                        {
+                            Console.WriteLine("No champion for: " + ObjectManager.Player.ChampionName);
+                        }
                     }
                     catch (Exception ex)
                     {

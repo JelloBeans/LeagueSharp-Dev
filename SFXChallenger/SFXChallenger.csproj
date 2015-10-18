@@ -93,6 +93,8 @@
     <Compile Include="Champions\Jinx.cs" />
     <Compile Include="Champions\Kalista.cs" />
     <Compile Include="Champions\KogMaw.cs" />
+    <Compile Include="Champions\Kindred.cs" />
+    <Compile Include="Champions\Mordekaiser.cs" />
     <Compile Include="Champions\Orianna.cs" />
     <Compile Include="Champions\Sivir.cs" />
     <Compile Include="Champions\TwistedFate.cs" />

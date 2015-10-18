@@ -23,7 +23,7 @@ using Utils = SFXChallenger.Helpers.Utils;
 
 namespace SFXChallenger.Champions
 {
-    class Jinx : Champion
+    class Jinx : TChampion
     {
         /// <summary>
         /// The minigun range
@@ -49,6 +49,8 @@ namespace SFXChallenger.Champions
                 return ItemUsageType.AfterAttack;
             }
         }
+
+        public Jinx() : base(700) { }
 
         /// <summary>
         /// Attach events
@@ -119,6 +121,12 @@ namespace SFXChallenger.Champions
                 { "R", HitChance.VeryHigh }
             };
             HitchanceManager.AddToMenu(comboHitChanceMenu, "combo", comboHitChanceDictionary);
+
+            ResourceManager.AddToMenu(comboMenu, new ResourceManagerArgs("combo-q", ResourceType.Mana, ResourceValueType.Percent, ResourceCheckType.Minimum)
+            {
+                Prefix = "Q",
+                DefaultValue = 5
+            });
 
             ResourceManager.AddToMenu(comboMenu, new ResourceManagerArgs("combo-w", ResourceType.Mana, ResourceValueType.Percent, ResourceCheckType.Minimum)
             {
@@ -409,8 +417,7 @@ namespace SFXChallenger.Champions
                         return;
                     }
 
-                    Orbwalker.ForceTarget(fishbones.Item2);
-                    args.Process = false;
+                    args.Target = fishbones.Item2;
                 } 
                 else if (Orbwalker.ActiveMode == Orbwalking.OrbwalkingMode.Combo ||
                          Orbwalker.ActiveMode == Orbwalking.OrbwalkingMode.Mixed)
@@ -427,8 +434,7 @@ namespace SFXChallenger.Champions
                         return;
                     }
 
-                    Orbwalker.ForceTarget(fishbones.Item2);
-                    args.Process = false;
+                    args.Target = fishbones.Item2;
                 }
                 else if (Orbwalker.ActiveMode == Orbwalking.OrbwalkingMode.LastHit)
                 {
@@ -441,11 +447,9 @@ namespace SFXChallenger.Champions
                             return;
                         }
 
-                        if (Player.Distance(target.ServerPosition) <= GetRealAutoAttackRange(MinigunRange, target))
+                        if (Player.Distance(target) <= GetRealAutoAttackRange(MinigunRange, target))
                         {
                             Q.Cast();
-                            Orbwalker.ForceTarget(target);
-                            args.Process = false;
                         }
                     }
                 }
@@ -542,7 +546,7 @@ namespace SFXChallenger.Champions
         {
             try
             {
-                return Player.HasBuff("JinxQ");
+                return Player.AttackRange > 525;
             }
             catch (Exception ex)
             {
@@ -656,7 +660,7 @@ namespace SFXChallenger.Champions
         private Tuple<int, Obj_AI_Base> FishbonesLaneClearLogic(Orbwalking.BeforeAttackEventArgs args)
         {
             var useQ = Menu.Item(Menu.Name + ".lane-clear.q").GetValue<bool>() && Q.IsReady();
-            if (useQ)
+            if (!useQ)
             {
                 return null;
             }
@@ -716,7 +720,7 @@ namespace SFXChallenger.Champions
             var switchRange = Menu.Item(string.Format("{0}.{1}.q-range", Menu.Name, type)).GetValue<Slider>().Value;
             var switchAoe = Menu.Item(string.Format("{0}.{1}.q-aoe", Menu.Name, type)).GetValue<Slider>().Value;
 
-            if (useQ)
+            if (!useQ)
             {
                 return null;
             }
@@ -727,6 +731,7 @@ namespace SFXChallenger.Champions
             }
 
             var hero = target as Obj_AI_Hero;
+
             if (hero == null)
             {
                 return null;
@@ -745,7 +750,8 @@ namespace SFXChallenger.Champions
                 return new Tuple<int, Obj_AI_Base>(enemiesInAoeRange, target);
             }
 
-            var distance = Player.Distance(target.ServerPosition);
+            var distance = Player.Distance(target);
+
             if (distance > switchRange)
             {
                 if (!usingFishBones)
