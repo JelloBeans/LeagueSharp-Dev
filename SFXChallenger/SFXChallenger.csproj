@@ -92,8 +92,10 @@
     <Compile Include="Champions\Graves.cs" />
     <Compile Include="Champions\Jinx.cs" />
     <Compile Include="Champions\Kalista.cs" />
+    <Compile Include="Champions\Kennen.cs" />
     <Compile Include="Champions\KogMaw.cs" />
     <Compile Include="Champions\Kindred.cs" />
+    <Compile Include="Champions\Caitlyn.cs" />
     <Compile Include="Champions\Mordekaiser.cs" />
     <Compile Include="Champions\Orianna.cs" />
     <Compile Include="Champions\Sivir.cs" />
