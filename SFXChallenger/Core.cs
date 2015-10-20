@@ -55,6 +55,10 @@ namespace SFXChallenger
         public static event EventHandler OnShutdown;
         public static event EventHandler OnBoot;
 
+        /// <summary>
+        /// Raises the <see cref="E:GameUpdate" /> event.
+        /// </summary>
+        /// <param name="args">The <see cref="EventArgs"/> instance containing the event data.</param>
         private static void OnGameUpdate(EventArgs args)
         {
             if (!_init)
@@ -92,6 +96,9 @@ namespace SFXChallenger
                                 break;
                             case Orbwalking.OrbwalkingMode.Flee:
                                 _champion.Flee();
+                                break;
+                            case Orbwalking.OrbwalkingMode.LastHit:
+                                _champion.LastHit();
                                 break;
                         }
                     }

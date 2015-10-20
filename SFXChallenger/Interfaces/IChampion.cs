@@ -43,5 +43,6 @@ namespace SFXChallenger.Interfaces
         void JungleClear();
         void Flee();
         void Killsteal();
+        void LastHit();
     }
 }

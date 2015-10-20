@@ -159,6 +159,18 @@ namespace SFXChallenger.Abstracts
             }
         }
 
+        void IChampion.LastHit()
+        {
+            try
+            {
+                LastHit();
+            }
+            catch (Exception ex)
+            {
+                Global.Logger.AddItem(new LogItem(ex));
+            }
+        }
+
         protected virtual void OnCorePreUpdate(EventArgs args)
         {
             try
@@ -203,6 +215,11 @@ namespace SFXChallenger.Abstracts
         protected abstract void JungleClear();
         protected abstract void Flee();
         protected abstract void Killsteal();
+
+        protected virtual void LastHit()
+        {
+            
+        }
 
         private void OnCoreBoot(EventArgs args)
         {
