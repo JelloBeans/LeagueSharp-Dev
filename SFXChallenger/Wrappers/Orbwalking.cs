@@ -901,7 +901,7 @@ namespace SFXChallenger.Wrappers
                                 Player.GetAutoAttackDamage(minion));
             }
 
-            public virtual AttackableUnit GetTarget()
+            public virtual AttackableUnit GetTarget(float range = -1)
             {
                 AttackableUnit result = null;
 
@@ -918,7 +918,7 @@ namespace SFXChallenger.Wrappers
                 var minions = new List<Obj_AI_Minion>();
                 if (ActiveMode != OrbwalkingMode.None && ActiveMode != OrbwalkingMode.Flee)
                 {
-                    minions = GetMinions(ActiveMode == OrbwalkingMode.Combo);
+                    minions = GetMinions(ActiveMode == OrbwalkingMode.Combo, range);
                 }
 
                 /*Killable Minion*/
@@ -1086,13 +1086,13 @@ namespace SFXChallenger.Wrappers
                 return _attackableObjects.ContainsKey(name.ToLower()) && _attackableObjects[name.ToLower()];
             }
 
-            private List<Obj_AI_Minion> GetMinions(bool combo = false)
+            private List<Obj_AI_Minion> GetMinions(bool combo = false, float range = -1)
             {
                 return GetMinions(
                     !combo, IsAttackableObject("ward"), IsAttackableObject("zyra"), IsAttackableObject("heimerdinger"),
                     IsAttackableObject("clone"), IsAttackableObject("annie"), IsAttackableObject("teemo"),
                     IsAttackableObject("shaco"), IsAttackableObject("gangplank"), IsAttackableObject("yorick"),
-                    IsAttackableObject("malzahar"), IsAttackableObject("mordekaiser"));
+                    IsAttackableObject("malzahar"), IsAttackableObject("mordekaiser"), range);
             }
 
             private List<Obj_AI_Minion> GetMinions(bool minion,
@@ -1106,14 +1106,15 @@ namespace SFXChallenger.Wrappers
                 bool gangplank,
                 bool yorick,
                 bool malzahar,
-                bool mordekaiser)
+                bool mordekaiser,
+                float range)
             {
                 var targets = new List<Obj_AI_Minion>();
                 var minions = new List<Obj_AI_Minion>();
                 var clones = new List<Obj_AI_Minion>();
 
                 var units = ward ? GameObjects.EnemyMinions.Concat(GameObjects.EnemyWards) : GameObjects.EnemyMinions;
-                foreach (var unit in units.Where(u => u.IsValidTarget() && InAutoAttackRange(u)))
+                foreach (var unit in units.Where(u => u.IsValidTarget() && ((range == -1 && InAutoAttackRange(u)) || u.Distance(Player) <= range)))
                 {
                     var baseName = unit.CharData.BaseSkinName.ToLower();
                     if (minion) //minions
