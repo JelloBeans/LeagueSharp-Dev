@@ -446,7 +446,7 @@ namespace SFXChallenger.Champions
                 return;
             }
 
-            powderKeg.ActivationTime = GetPowderKegActivationTime(powderKeg.CreationTime, powderKeg.Minion.Health);
+            powderKeg.ActivationTime = GetPowderKegActivationTime(powderKeg.CreationTime, powderKeg.Minion.Health - 2);
         }
 
         /// <summary>
@@ -483,6 +483,7 @@ namespace SFXChallenger.Champions
         {
             try
             {
+                var count = 0;
                 foreach (var powderKeg in _powderKegs)
                 {
                     var activationTime = powderKeg.ActivationTime;
@@ -498,11 +499,33 @@ namespace SFXChallenger.Champions
                     {
                         Drawing.DrawText(healthBarPosition.X + 5, healthBarPosition.Y - 30, Color.White, string.Format("{0:0.00}", remainder / 1000));
                     }
-                }
 
-                var maximumBounces = Menu.Item(Menu.Name + ".laneclear.q-e-bounces").GetValue<Slider>().Value;
-                var range = Q.Range + (maximumBounces * PowderKegLinkRadius);
-                Drawing.DrawCircle(Player.Position, range, Color.White);
+                    var color = Color.AliceBlue;
+                    switch(count)
+                    {
+                        case 1:
+                            color = Color.BlueViolet;
+                            break;
+                        case 2:
+                            color = Color.Green;
+                            break;
+                        case 3:
+                            color = Color.Yellow;
+                            break;
+                        case 4:
+                            color = Color.Red;
+                            break;
+                    }
+
+                    var position = powderKeg.Minion.Position.To2D();
+
+                    foreach (var keg in _powderKegs.Where(k => k.Minion.Distance(powderKeg.Minion) <= PowderKegLinkRadius && k.NetworkId != powderKeg.NetworkId))
+                    {
+                        Drawing.DrawLine(position, keg.Minion.Position.To2D(), 5f, color);
+                    }
+
+                    count++;
+                }
             }
             catch (Exception ex)
             {
@@ -524,11 +547,6 @@ namespace SFXChallenger.Champions
             }
 
             var powderKeg = new PowderKeg(minion, GetPowderKegActivationTime(Environment.TickCount));
-            foreach (var keg in _powderKegs.Where(keg => keg.Minion.Distance(powderKeg.Minion) <= PowderKegLinkRadius))
-            {
-                keg.LinkedPowderKegs.Add(powderKeg);
-                powderKeg.LinkedPowderKegs.Add(keg);
-            }
             _powderKegs.Add(powderKeg);
         }
 
@@ -540,10 +558,6 @@ namespace SFXChallenger.Champions
         private void GameObject_OnDelete(GameObject sender, EventArgs args)
         {
             _powderKegs.RemoveWhere(p => p.NetworkId == sender.NetworkId);
-            foreach (var keg in _powderKegs.Where(p => p.LinkedPowderKegs.Any(k => k.NetworkId == sender.NetworkId)))
-            {
-                keg.LinkedPowderKegs.RemoveAll(k => k.NetworkId == sender.NetworkId);
-            }
         }
 
         #endregion
@@ -557,15 +571,14 @@ namespace SFXChallenger.Champions
 
             var explosionRadius = PowderKegExplosionRadius + target.BoundingRadius;
 
-            if (targetPosition.IsInsideCircle(powderKegPosition, explosionRadius))
+            if (targetPosition.Distance(powderKegPosition) <= explosionRadius)
             {
                 return null;
             }
             
             var powderKegLinkRadius = new Geometry.Polygon.Circle(powderKegPosition, PowderKegLinkRadius);
-            var targetExplosionPosition = new Geometry.Polygon.Circle(targetPosition, explosionRadius);
 
-            return powderKegLinkRadius.Points.Where(p => targetExplosionPosition.IsInside(p) && !p.IsWall());
+            return powderKegLinkRadius.Points.Where(p => targetPosition.IsInsideCircle(p, explosionRadius));
         }
 
         /// <summary>
@@ -583,22 +596,18 @@ namespace SFXChallenger.Champions
             var target = TargetSelector.GetTarget(Q.Range + (maximumBounces * PowderKegLinkRadius));
             if (target == null)
             {
-                Console.WriteLine("No Target: " + Q.Range + "," + maximumBounces + "," + PowderKegLinkRadius + "," + (maximumBounces * PowderKegLinkRadius));
                 return;
             }
-
-            int bounces;
-
-            var powderKeg = FindClosestExplodablePowderKeg(target, parrley, maximumBounces, out bounces);
+            
+            var powderKeg = FindClosestExplodablePowderKeg(target, parrley);
             
             if (powderKeg != null)
             {                
-                var prediction = Prediction.GetPrediction(target, (bounces * E.Delay) + GetParrleyTravelTime(powderKeg.Minion));
-                if (powderKeg.Minion.Distance(prediction.UnitPosition) > PowderKegExplosionRadius)
-                {
-                    Console.WriteLine("No Target Prediction: " + powderKeg.Minion.Distance(prediction.UnitPosition) + "," + bounces + "," + E.Delay + "," + GetParrleyTravelTime(powderKeg.Minion));
-                    return;
-                }
+                //var prediction = Prediction.GetPrediction(target, E.Delay + GetParrleyTravelTime(powderKeg.Minion));
+                //if (powderKeg.Minion.Distance(prediction.CastPosition) > PowderKegExplosionRadius)
+                //{
+                //    return;
+                //}
 
                 if (parrley)
                 {
@@ -634,9 +643,8 @@ namespace SFXChallenger.Champions
             {
                 return;
             }
-
-            int bounces;
-            powderKeg = FindClosestExplodablePowderKeg(powderKeg, parrley, maximumBounces, out bounces);
+            
+            powderKeg = FindClosestExplodablePowderKeg(powderKeg, parrley);
 
             if (powderKeg != null)
             {
@@ -682,19 +690,15 @@ namespace SFXChallenger.Champions
         /// </summary>
         /// <param name="powderKeg">The powder keg.</param>
         /// <param name="parrley">if set to <c>true</c> [parrley].</param>
-        /// <param name="maximumBounces">The maximum bounces.</param>
-        /// <param name="bounces">The number of bounces.</param>
         /// <returns></returns>
-        private PowderKeg FindClosestExplodablePowderKeg(PowderKeg powderKeg, bool parrley, int maximumBounces, out int bounces)
+        private PowderKeg FindClosestExplodablePowderKeg(PowderKeg powderKeg, bool parrley)
         {
-            bounces = 0;
-
             if (IsPowderKegExplodable(powderKeg, parrley))
             {
                 return powderKeg;
             }
 
-            var linkedPowderKeg = FindLinkedExplodablePowderKeg(powderKeg, parrley, maximumBounces, bounces);
+            var linkedPowderKeg = FindLinkedExplodablePowderKeg(powderKeg, parrley);
             return linkedPowderKeg;
         }
 
@@ -703,13 +707,9 @@ namespace SFXChallenger.Champions
         /// </summary>
         /// <param name="target">The target.</param>
         /// <param name="parrley">if set to <c>true</c> [parrley].</param>
-        /// <param name="maximumBounces">The maximum bounces.</param>
-        /// <param name="bounces">The number of bounces.</param>
         /// <returns></returns>
-        private PowderKeg FindClosestExplodablePowderKeg(Obj_AI_Base target, bool parrley, int maximumBounces, out int bounces)
+        private PowderKeg FindClosestExplodablePowderKeg(Obj_AI_Base target, bool parrley)
         {
-            bounces = 0;
-
             var powderKeg = _powderKegs
                 .Where(p => p.Minion.Distance(target) <= PowderKegExplosionRadius)
                 .OrderBy(p => p.Minion.Distance(Player))
@@ -725,7 +725,10 @@ namespace SFXChallenger.Champions
                 return powderKeg;
             }
 
-            var linkedPowderKeg = FindLinkedExplodablePowderKeg(powderKeg, parrley, maximumBounces, bounces);
+            Console.WriteLine("Closest not explodable, trying linked... ");
+
+            var linkedPowderKeg = FindLinkedExplodablePowderKeg(powderKeg, parrley);
+
             return linkedPowderKeg;
         }
 
@@ -734,33 +737,22 @@ namespace SFXChallenger.Champions
         /// </summary>
         /// <param name="powderKeg">The powder keg.</param>
         /// <param name="parrley">if set to <c>true</c> [parrley].</param>
-        /// <param name="bounces">The bounces.</param>
-        /// <param name="maximumBounces">The maximum bounces.</param>
         /// <returns></returns>
-        private PowderKeg FindLinkedExplodablePowderKeg(PowderKeg powderKeg, bool parrley, int maximumBounces, int bounces)
+        private PowderKeg FindLinkedExplodablePowderKeg(PowderKeg powderKeg, bool parrley)
         {
-            bounces += 1;
-
-            if (bounces > maximumBounces)
-            {
-                return null;
-            }
-
-            foreach (var keg in powderKeg.LinkedPowderKegs)
+            foreach (var keg in _powderKegs.Where(k => k.Minion.Distance(powderKeg.Minion) <= PowderKegLinkRadius && k.NetworkId != powderKeg.NetworkId))
             {
                 if (IsPowderKegExplodable(keg, parrley))
                 {
                     return keg;
                 }
 
-                var linked = FindLinkedExplodablePowderKeg(keg, parrley, maximumBounces, bounces);
+                var linked = FindLinkedExplodablePowderKeg(keg, parrley);
                 if (linked != null)
-                {                    
+                {
                     return linked;
                 }
             }
-
-            bounces -= 1;
             return null;
         }
 
@@ -893,14 +885,6 @@ namespace SFXChallenger.Champions
             public float CreationTime { get; set; }
 
             /// <summary>
-            /// Gets or sets the linked powder kegs.
-            /// </summary>
-            /// <value>
-            /// The linked powder kegs.
-            /// </value>
-            public List<PowderKeg> LinkedPowderKegs { get; set; }
-
-            /// <summary>
             /// Initializes a new instance of the <see cref="PowderKeg" /> class.
             /// </summary>
             /// <param name="target">The target.</param>
@@ -911,7 +895,6 @@ namespace SFXChallenger.Champions
                 Minion = target;
                 ActivationTime = activationTime;
                 CreationTime = Environment.TickCount;
-                LinkedPowderKegs = new List<PowderKeg>();
             }
         }
 
