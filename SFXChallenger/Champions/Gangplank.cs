@@ -10,11 +10,12 @@ using SFXChallenger.Library.Logger;
 using SFXChallenger.Managers;
 using Spell = SFXChallenger.Wrappers.Spell;
 using SFXChallenger.Args;
-using SFXChallenger.Library.Extensions.NET;
 using SFXChallenger.Library.Extensions.SharpDX;
 using SharpDX;
 using Color = System.Drawing.Color;
 using MinionManager = SFXChallenger.Library.MinionManager;
+using TargetSelector = SFXChallenger.SFXTargetSelector.TargetSelector;
+using SFXChallenger.Library.Extensions.NET;
 
 namespace SFXChallenger.Champions
 {
@@ -51,7 +52,7 @@ namespace SFXChallenger.Champions
         /// <summary>
         /// Initializes a new instance of the <see cref="Gangplank"/> class.
         /// </summary>
-        public Gangplank() : base(620f + PowderKegExplosionRadius)
+        public Gangplank() : base(590f + PowderKegExplosionRadius)
         {
 
         }
@@ -99,13 +100,13 @@ namespace SFXChallenger.Champions
         /// </summary>
         protected override void SetupSpells()
         {
-            Q = new Spell(SpellSlot.Q, 620f);
+            Q = new Spell(SpellSlot.Q, 590f);
             Q.SetTargetted(0.25f, 2200f);
 
             W = new Spell(SpellSlot.W);
 
-            E = new Spell(SpellSlot.E, 1000f);
-            E.SetSkillshot(0.15f, 50, float.MaxValue, false, SkillshotType.SkillshotCircle);
+            E = new Spell(SpellSlot.E, 950f);
+            E.SetSkillshot(0.25f, 50, float.MaxValue, false, SkillshotType.SkillshotCircle);
 
             R = new Spell(SpellSlot.R);
             R.SetSkillshot(1f, 100, float.MaxValue, false, SkillshotType.SkillshotCircle);
@@ -155,7 +156,7 @@ namespace SFXChallenger.Champions
             harassMenu.AddItem(new MenuItem(string.Format("{0}.e-stacks", harassMenu.Name), "E Min. Stacks").SetValue(new Slider(1, 0, 5)));
 
             harassMenu.AddItem(new MenuItem(string.Format("{0}.q-e", harassMenu.Name), "Use Q on E").SetValue(true));
-            harassMenu.AddItem(new MenuItem(string.Format("{0}.q-e-bounces", harassMenu.Name), "E Max Bounces").SetValue(new Slider(3, 1, 4)));
+            harassMenu.AddItem(new MenuItem(string.Format("{0}.q-e-bounces", harassMenu.Name), "E Max Bounces").SetValue(new Slider(2, 0, 4)));
         }
 
         /// <summary>
@@ -181,7 +182,7 @@ namespace SFXChallenger.Champions
             laneClearMenu.AddItem(new MenuItem(string.Format("{0}.e-stacks", laneClearMenu.Name), "E Min. Stacks").SetValue(new Slider(1, 0, 5)));
 
             laneClearMenu.AddItem(new MenuItem(string.Format("{0}.q-e", laneClearMenu.Name), "Use Q on E").SetValue(true));
-            laneClearMenu.AddItem(new MenuItem(string.Format("{0}.q-e-bounces", laneClearMenu.Name), "E Max Bounces").SetValue(new Slider(3, 1, 4)));
+            laneClearMenu.AddItem(new MenuItem(string.Format("{0}.q-e-bounces", laneClearMenu.Name), "E Max Bounces").SetValue(new Slider(2, 0, 4)));
             laneClearMenu.AddItem(new MenuItem(string.Format("{0}.e-min", laneClearMenu.Name), "E Min. Hit").SetValue(new Slider(3, 0, 10)));
         }
 
@@ -252,6 +253,46 @@ namespace SFXChallenger.Champions
             }
 
             HarassExplodePowderKegs(useParrley);
+
+            if (useE)
+            {
+                var maximumBounces = Menu.Item(Menu.Name + ".harass.q-e-bounces").GetValue<Slider>().Value;
+
+                var target = TargetSelector.GetTarget(Q.Range + (maximumBounces * PowderKegLinkRadius));
+                if (target == null)
+                {
+                    return;
+                }
+
+                var powderKeg = _powderKegs
+                    .Where(p => IsPowderKegExplodable(p, useParrley) && p.Minion.Distance(target) <= PowderKegLinkRadius + PowderKegExplosionRadius)
+                    .OrderBy(p => p.Minion.Distance(target))
+                    .FirstOrDefault();
+
+                if (powderKeg == null)
+                {
+                    return;
+                }
+
+                var availablePositions = GetBestPowderKegPositions(powderKeg, target);
+                if (availablePositions == null)
+                {
+                    return;
+                }
+
+                var closestPosition = availablePositions.Where(p => p.Distance(Player) <= E.Range).OrderBy(p => p.Distance(target)).FirstOrDefault();
+                if (closestPosition == null)
+                {
+                    return;
+                }
+
+                if (closestPosition.Distance(Player) > E.Range)
+                {
+                    return;
+                }
+
+                E.Cast(closestPosition);
+            }
         }
 
         /// <summary>
@@ -275,7 +316,11 @@ namespace SFXChallenger.Champions
 
             if (useQ)
             {
-                Casting.Farm(Q, MinionManager.GetMinions(Q.Range), 1);
+                var minion = MinionManager.GetMinions(Q.Range).FirstOrDefault(m => Q.IsKillable(m));
+                if (minion != null)
+                {
+                    Casting.TargetSkill(minion, Q);
+                }
             }
 
             if (useE)
@@ -399,9 +444,9 @@ namespace SFXChallenger.Champions
             if (powderKeg == null)
             {
                 return;
-            }            
+            }
 
-            powderKeg.ActivationTime = GetPowderKegActivationTime(Environment.TickCount, powderKeg.Minion.Health);
+            powderKeg.ActivationTime = GetPowderKegActivationTime(powderKeg.CreationTime, powderKeg.Minion.Health);
         }
 
         /// <summary>
@@ -454,6 +499,10 @@ namespace SFXChallenger.Champions
                         Drawing.DrawText(healthBarPosition.X + 5, healthBarPosition.Y - 30, Color.White, string.Format("{0:0.00}", remainder / 1000));
                     }
                 }
+
+                var maximumBounces = Menu.Item(Menu.Name + ".laneclear.q-e-bounces").GetValue<Slider>().Value;
+                var range = Q.Range + (maximumBounces * PowderKegLinkRadius);
+                Drawing.DrawCircle(Player.Position, range, Color.White);
             }
             catch (Exception ex)
             {
@@ -501,11 +550,9 @@ namespace SFXChallenger.Champions
 
         #region Powder Kegs
 
-        private IEnumerable<Vector2> GetBestPowderKegPositions()
+        private IEnumerable<Vector2> GetBestPowderKegPositions(PowderKeg powderKeg, Obj_AI_Hero target)
         {
-            var powderKegPosition = Player.Position.To2D();
-
-            var target = Orbwalker.GetTarget();
+            var powderKegPosition = powderKeg.Minion.Position.To2D();
             var targetPosition = target.Position.To2D();
 
             var explosionRadius = PowderKegExplosionRadius + target.BoundingRadius;
@@ -515,10 +562,10 @@ namespace SFXChallenger.Champions
                 return null;
             }
             
-            var powderKegExplosion = new Geometry.Polygon.Circle(powderKegPosition, PowderKegLinkRadius + PowderKegExplosionRadius);
+            var powderKegLinkRadius = new Geometry.Polygon.Circle(powderKegPosition, PowderKegLinkRadius);
             var targetExplosionPosition = new Geometry.Polygon.Circle(targetPosition, explosionRadius);
 
-            return powderKegExplosion.Points.Where(p => targetExplosionPosition.IsInside(p) && !p.IsWall());
+            return powderKegLinkRadius.Points.Where(p => targetExplosionPosition.IsInside(p) && !p.IsWall());
         }
 
         /// <summary>
@@ -532,22 +579,24 @@ namespace SFXChallenger.Champions
             }
 
             var maximumBounces = Menu.Item(Menu.Name + ".harass.q-e-bounces").GetValue<Slider>().Value;
-
-            var target = Orbwalker.GetTarget(Q.Range + (maximumBounces * PowderKegLinkRadius)) as Obj_AI_Hero;
+            
+            var target = TargetSelector.GetTarget(Q.Range + (maximumBounces * PowderKegLinkRadius));
             if (target == null)
             {
+                Console.WriteLine("No Target: " + Q.Range + "," + maximumBounces + "," + PowderKegLinkRadius + "," + (maximumBounces * PowderKegLinkRadius));
                 return;
             }
 
             int bounces;
-            var powderKeg = FindClosestExplodablePowderKeg(target, parrley, maximumBounces, out bounces);
 
+            var powderKeg = FindClosestExplodablePowderKeg(target, parrley, maximumBounces, out bounces);
+            
             if (powderKeg != null)
-            {
+            {                
                 var prediction = Prediction.GetPrediction(target, (bounces * E.Delay) + GetParrleyTravelTime(powderKeg.Minion));
                 if (powderKeg.Minion.Distance(prediction.UnitPosition) > PowderKegExplosionRadius)
                 {
-                    Console.WriteLine("Target prediction out of explosion range.");
+                    Console.WriteLine("No Target Prediction: " + powderKeg.Minion.Distance(prediction.UnitPosition) + "," + bounces + "," + E.Delay + "," + GetParrleyTravelTime(powderKeg.Minion));
                     return;
                 }
 
@@ -638,7 +687,7 @@ namespace SFXChallenger.Champions
         /// <returns></returns>
         private PowderKeg FindClosestExplodablePowderKeg(PowderKeg powderKeg, bool parrley, int maximumBounces, out int bounces)
         {
-            bounces = 1;
+            bounces = 0;
 
             if (IsPowderKegExplodable(powderKeg, parrley))
             {
@@ -659,12 +708,11 @@ namespace SFXChallenger.Champions
         /// <returns></returns>
         private PowderKeg FindClosestExplodablePowderKeg(Obj_AI_Base target, bool parrley, int maximumBounces, out int bounces)
         {
-            bounces = 1;
+            bounces = 0;
 
             var powderKeg = _powderKegs
                 .Where(p => p.Minion.Distance(target) <= PowderKegExplosionRadius)
-                .OrderBy(p => IsPowderKegExplodable(p, parrley))
-                .ThenBy(p => p.Minion.Distance(Player))
+                .OrderBy(p => p.Minion.Distance(Player))
                 .FirstOrDefault();
 
             if (powderKeg == null)
@@ -707,11 +755,12 @@ namespace SFXChallenger.Champions
 
                 var linked = FindLinkedExplodablePowderKeg(keg, parrley, maximumBounces, bounces);
                 if (linked != null)
-                {
+                {                    
                     return linked;
                 }
             }
 
+            bounces -= 1;
             return null;
         }
 
@@ -839,6 +888,11 @@ namespace SFXChallenger.Champions
             public float ActivationTime { get; set; }
 
             /// <summary>
+            /// Gets the creation time.
+            /// </summary>
+            public float CreationTime { get; set; }
+
+            /// <summary>
             /// Gets or sets the linked powder kegs.
             /// </summary>
             /// <value>
@@ -856,6 +910,7 @@ namespace SFXChallenger.Champions
                 NetworkId = target.NetworkId;
                 Minion = target;
                 ActivationTime = activationTime;
+                CreationTime = Environment.TickCount;
                 LinkedPowderKegs = new List<PowderKeg>();
             }
         }

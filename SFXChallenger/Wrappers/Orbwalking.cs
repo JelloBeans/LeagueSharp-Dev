@@ -908,7 +908,7 @@ namespace SFXChallenger.Wrappers
                 if ((ActiveMode == OrbwalkingMode.Mixed || ActiveMode == OrbwalkingMode.LaneClear) &&
                     !_config.Item("PriorizeFarm").GetValue<bool>())
                 {
-                    var target = TargetSelector.GetTarget(-1, DamageType.Physical);
+                    var target = TargetSelector.GetTarget(range, DamageType.Physical);
                     if (target != null)
                     {
                         return target;
@@ -993,8 +993,8 @@ namespace SFXChallenger.Wrappers
                 /*Champions*/
                 if (ActiveMode != OrbwalkingMode.LastHit)
                 {
-                    var target = TargetSelector.GetTarget(-1, DamageType.Physical);
-                    if (target.IsValidTarget() && InAutoAttackRange(target))
+                    var target = TargetSelector.GetTarget(range, DamageType.Physical);
+                    if (target.IsValidTarget() && ((range == -1 && InAutoAttackRange(target) || target.Distance(Player) <= range)))
                     {
                         return target;
                     }
