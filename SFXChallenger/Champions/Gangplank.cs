@@ -815,7 +815,7 @@ namespace SFXChallenger.Champions
         /// <param name="explodable">if set to <c>true</c> [explodable].</param>
         /// <param name="blacklistPowderKegs">The blacklist powder kegs.</param>
         /// <returns></returns>
-        private Tuple<float, PowderKeg> RecursiveClosestLinkedPowderKeg(PowderKeg powderKeg, bool useParrley, bool explodable, ICollection<int> blacklistPowderKegs)
+        private Tuple<float, PowderKeg, bool> RecursiveClosestLinkedPowderKeg(PowderKeg powderKeg, bool useParrley, bool explodable, ICollection<int> blacklistPowderKegs)
         {
             blacklistPowderKegs.Add(powderKeg.NetworkId);
 
@@ -829,7 +829,7 @@ namespace SFXChallenger.Champions
                 return null;
             }
 
-            Tuple<float, PowderKeg> closest = null;
+            Tuple<float, PowderKeg, bool> closest = null;
 
             foreach (var keg in linkedPowderKegs)
             {
@@ -838,7 +838,7 @@ namespace SFXChallenger.Champions
                 {
                     if (IsPowderKegExplodable(keg, useParrley))
                     {
-                        return new Tuple<float, PowderKeg>(keg.Minion.Distance(Player), keg);
+                        return new Tuple<float, PowderKeg, bool>(keg.Minion.Distance(Player), keg, true);
                     }
                 }
 
@@ -850,7 +850,7 @@ namespace SFXChallenger.Champions
                 }
 
                 // Check if the closest powder keg is explodable
-                if (explodable && IsPowderKegExplodable(closestPowderKeg.Item2, useParrley))
+                if (explodable && closestPowderKeg.Item3)
                 {
                     return closestPowderKeg;
                 }
@@ -862,7 +862,7 @@ namespace SFXChallenger.Champions
                 }
             }
 
-            return null;
+            return closest;
         }
 
         /// <summary>
