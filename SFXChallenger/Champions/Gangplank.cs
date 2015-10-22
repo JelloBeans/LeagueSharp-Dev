@@ -15,7 +15,6 @@ using SharpDX;
 using Color = System.Drawing.Color;
 using MinionManager = SFXChallenger.Library.MinionManager;
 using TargetSelector = SFXChallenger.SFXTargetSelector.TargetSelector;
-using SFXChallenger.Library.Extensions.NET;
 
 namespace SFXChallenger.Champions
 {
@@ -37,7 +36,7 @@ namespace SFXChallenger.Champions
         /// <summary>
         /// The powder keg explosion radius
         /// </summary>
-        private const float PowderKegExplosionRadius = 400f;
+        private const float PowderKegExplosionRadius = 390f;
 
         /// <summary>
         /// The powder keg link radius
@@ -106,7 +105,7 @@ namespace SFXChallenger.Champions
             W = new Spell(SpellSlot.W);
 
             E = new Spell(SpellSlot.E, 950f);
-            E.SetSkillshot(0.25f, 50, float.MaxValue, false, SkillshotType.SkillshotCircle);
+            E.SetSkillshot(0.25f, 40, float.MaxValue, false, SkillshotType.SkillshotCircle);
 
             R = new Spell(SpellSlot.R);
             R.SetSkillshot(1f, 100, float.MaxValue, false, SkillshotType.SkillshotCircle);
@@ -246,7 +245,7 @@ namespace SFXChallenger.Champions
             if (useQLastHit)
             {
                 var minion = Orbwalker.GetTarget(Q.Range) as Obj_AI_Minion;
-                if (minion != null && Q.GetDamage(minion) > minion.Health)
+                if (minion != null && Player.GetAutoAttackDamage(minion, true) >= minion.Health)
                 {
                     Casting.TargetSkill(minion, Q);
                 }
@@ -281,7 +280,7 @@ namespace SFXChallenger.Champions
                 }
 
                 var closestPosition = availablePositions.Where(p => p.Distance(Player) <= E.Range).OrderBy(p => p.Distance(target)).FirstOrDefault();
-                if (closestPosition == null)
+                if (closestPosition == default(Vector2))
                 {
                     return;
                 }
@@ -372,7 +371,7 @@ namespace SFXChallenger.Champions
         /// Killsteal.
         /// </summary>
         protected override void Killsteal()
-        {            
+        {
         }
 
         /// <summary>
@@ -483,11 +482,10 @@ namespace SFXChallenger.Champions
         {
             try
             {
-                var count = 0;
                 foreach (var powderKeg in _powderKegs)
                 {
                     var activationTime = powderKeg.ActivationTime;
-                    var remainder = activationTime - Environment.TickCount;                    
+                    var remainder = activationTime - Environment.TickCount;
 
                     var healthBarPosition = powderKeg.Minion.HPBarPosition;
 
@@ -497,34 +495,9 @@ namespace SFXChallenger.Champions
                     }
                     else
                     {
-                        Drawing.DrawText(healthBarPosition.X + 5, healthBarPosition.Y - 30, Color.White, string.Format("{0:0.00}", remainder / 1000));
+                        Drawing.DrawText(healthBarPosition.X + 5, healthBarPosition.Y - 30, Color.White,
+                            string.Format("{0:0.00}", remainder / 1000));
                     }
-
-                    var color = Color.AliceBlue;
-                    switch(count)
-                    {
-                        case 1:
-                            color = Color.BlueViolet;
-                            break;
-                        case 2:
-                            color = Color.Green;
-                            break;
-                        case 3:
-                            color = Color.Yellow;
-                            break;
-                        case 4:
-                            color = Color.Red;
-                            break;
-                    }
-
-                    var position = powderKeg.Minion.Position.To2D();
-
-                    foreach (var keg in _powderKegs.Where(k => k.Minion.Distance(powderKeg.Minion) <= PowderKegLinkRadius && k.NetworkId != powderKeg.NetworkId))
-                    {
-                        Drawing.DrawLine(position, keg.Minion.Position.To2D(), 5f, color);
-                    }
-
-                    count++;
                 }
             }
             catch (Exception ex)
@@ -584,7 +557,8 @@ namespace SFXChallenger.Champions
         /// <summary>
         /// Explode powder kegs in harass
         /// </summary>
-        private void HarassExplodePowderKegs(bool parrley)
+        /// <param name="useParrley">if set to <c>true</c> [use useParrley].</param>
+        private void HarassExplodePowderKegs(bool useParrley)
         {
             if (!Q.IsReady())
             {
@@ -599,7 +573,7 @@ namespace SFXChallenger.Champions
                 return;
             }
             
-            var powderKeg = FindClosestExplodablePowderKeg(target, parrley);
+            var powderKeg = FindClosestPowderKeg(target, useParrley, true);
             
             if (powderKeg != null)
             {                
@@ -609,7 +583,7 @@ namespace SFXChallenger.Champions
                 //    return;
                 //}
 
-                if (parrley)
+                if (useParrley)
                 {
                     Casting.TargetSkill(powderKeg.Minion, Q);
                 }
@@ -643,8 +617,8 @@ namespace SFXChallenger.Champions
             {
                 return;
             }
-            
-            powderKeg = FindClosestExplodablePowderKeg(powderKeg, parrley);
+
+            powderKeg = FindClosestPowderKeg(powderKeg, parrley, true);
 
             if (powderKeg != null)
             {
@@ -686,77 +660,6 @@ namespace SFXChallenger.Champions
         }
         
         /// <summary>
-        /// Finds the closest explodable powder keg.
-        /// </summary>
-        /// <param name="powderKeg">The powder keg.</param>
-        /// <param name="parrley">if set to <c>true</c> [parrley].</param>
-        /// <returns></returns>
-        private PowderKeg FindClosestExplodablePowderKeg(PowderKeg powderKeg, bool parrley)
-        {
-            if (IsPowderKegExplodable(powderKeg, parrley))
-            {
-                return powderKeg;
-            }
-
-            var linkedPowderKeg = FindLinkedExplodablePowderKeg(powderKeg, parrley);
-            return linkedPowderKeg;
-        }
-
-        /// <summary>
-        /// Finds the closest powder keg.
-        /// </summary>
-        /// <param name="target">The target.</param>
-        /// <param name="parrley">if set to <c>true</c> [parrley].</param>
-        /// <returns></returns>
-        private PowderKeg FindClosestExplodablePowderKeg(Obj_AI_Base target, bool parrley)
-        {
-            var powderKeg = _powderKegs
-                .Where(p => p.Minion.Distance(target) <= PowderKegExplosionRadius)
-                .OrderBy(p => p.Minion.Distance(Player))
-                .FirstOrDefault();
-
-            if (powderKeg == null)
-            {
-                return null;
-            }
-
-            if (IsPowderKegExplodable(powderKeg, parrley))
-            {
-                return powderKeg;
-            }
-
-            Console.WriteLine("Closest not explodable, trying linked... ");
-
-            var linkedPowderKeg = FindLinkedExplodablePowderKeg(powderKeg, parrley);
-
-            return linkedPowderKeg;
-        }
-
-        /// <summary>
-        /// Finds a linked explodable powder keg.
-        /// </summary>
-        /// <param name="powderKeg">The powder keg.</param>
-        /// <param name="parrley">if set to <c>true</c> [parrley].</param>
-        /// <returns></returns>
-        private PowderKeg FindLinkedExplodablePowderKeg(PowderKeg powderKeg, bool parrley)
-        {
-            foreach (var keg in _powderKegs.Where(k => k.Minion.Distance(powderKeg.Minion) <= PowderKegLinkRadius && k.NetworkId != powderKeg.NetworkId))
-            {
-                if (IsPowderKegExplodable(keg, parrley))
-                {
-                    return keg;
-                }
-
-                var linked = FindLinkedExplodablePowderKeg(keg, parrley);
-                if (linked != null)
-                {
-                    return linked;
-                }
-            }
-            return null;
-        }
-
-        /// <summary>
         /// Gets the powder keg activation time after creation.
         /// </summary>
         /// <param name="time">The time.</param>
@@ -784,16 +687,16 @@ namespace SFXChallenger.Champions
         /// [true] if explodable else [false]
         /// </summary>
         /// <param name="powderKeg">the powder keg</param>
-        /// <param name="parrley">if set to <c>true</c> [parrley].</param>
+        /// <param name="useParrley">if set to <c>true</c> [useParrley] else melee.</param>
         /// <returns></returns>
-        private bool IsPowderKegExplodable(PowderKeg powderKeg, bool parrley)
+        private bool IsPowderKegExplodable(PowderKeg powderKeg, bool useParrley)
         {
-            if (parrley && powderKeg.Minion.Distance(Player) > Q.Range)
+            if (useParrley && powderKeg.Minion.Distance(Player) > Q.Range)
             {
                 return false;
             }
 
-            if (!parrley && powderKeg.Minion.Distance(Player) > Orbwalking.GetRealAutoAttackRange(powderKeg.Minion))
+            if (!useParrley && powderKeg.Minion.Distance(Player) > Orbwalking.GetRealAutoAttackRange(powderKeg.Minion))
             {
                 return false;
             }
@@ -803,7 +706,7 @@ namespace SFXChallenger.Champions
                 return true;
             }
 
-            var travelTime = parrley ? GetParrleyTravelTime(powderKeg.Minion) : Player.AttackDelay;
+            var travelTime = useParrley ? GetParrleyTravelTime(powderKeg.Minion) : Player.AttackDelay;
             var activationTime = powderKeg.ActivationTime;
             var remainder = activationTime - Environment.TickCount - travelTime;
 
@@ -818,6 +721,148 @@ namespace SFXChallenger.Champions
         private float GetParrleyTravelTime(Obj_AI_Base target)
         {
             return (Player.Distance(target) / Q.Speed + Q.Delay) * 1000;
+        }
+
+        /// <summary>
+        /// Finds the closest powder keg.
+        /// </summary>
+        /// <param name="keg">The keg.</param>
+        /// <param name="useParrley">if set to <c>true</c> [use parrley].</param>
+        /// <param name="explodable">if set to <c>true</c> [explodable].</param>
+        /// <returns></returns>
+        private PowderKeg FindClosestPowderKeg(PowderKeg keg, bool useParrley, bool explodable)
+        {
+            var powderKeg = _powderKegs
+                .OrderBy(k => k.Minion.Distance(keg.Minion))
+                .FirstOrDefault(k => k.Minion.Distance(keg.Minion) <= PowderKegLinkRadius);
+
+            if (powderKeg == null)
+            {
+                return null;
+            }
+
+            if (!explodable)
+            {
+                return powderKeg;
+            }
+
+            if (IsPowderKegExplodable(powderKeg, useParrley))
+            {
+                return powderKeg;
+            }
+
+            return FindClosestLinkedPowderKeg(powderKeg, useParrley, true, null);
+        }
+
+        /// <summary>
+        /// Finds the closest powder keg.
+        /// </summary>
+        /// <param name="target">The target.</param>
+        /// <param name="useParrley">if set to <c>true</c> [use parrley].</param>
+        /// <param name="explodable">if set to <c>true</c> [explodable].</param>
+        /// <returns></returns>
+        private PowderKeg FindClosestPowderKeg(Obj_AI_Base target, bool useParrley, bool explodable)
+        {
+            var powderKeg = _powderKegs
+                .OrderBy(k => k.Minion.Distance(target))
+                .FirstOrDefault(k => k.Minion.Distance(target) <= PowderKegExplosionRadius);
+
+            if (powderKeg == null)
+            {
+                return null;
+            }
+
+            if (!explodable)
+            {
+                return powderKeg;
+            }
+
+            if (IsPowderKegExplodable(powderKeg, useParrley))
+            {
+                return powderKeg;
+            }
+
+            return FindClosestLinkedPowderKeg(powderKeg, useParrley, true, null);
+        }
+
+        /// <summary>
+        /// Finds the closest linked powder keg.
+        /// </summary>
+        /// <param name="powderKeg">The powder keg.</param>
+        /// <param name="useParrley">if set to <c>true</c> [use parrley].</param>
+        /// <param name="explodable">if set to <c>true</c> [explodable].</param>
+        /// <param name="blacklistPowderKegs">The blacklist powder kegs.</param>
+        /// <returns></returns>
+        private PowderKeg FindClosestLinkedPowderKeg(PowderKeg powderKeg, bool useParrley, bool explodable, IList<int> blacklistPowderKegs)
+        {
+            if (blacklistPowderKegs == null)
+            {
+                blacklistPowderKegs = new List<int>();
+            }
+
+            blacklistPowderKegs.Add(powderKeg.NetworkId);
+
+            var closest = RecursiveClosestLinkedPowderKeg(powderKeg, useParrley, explodable, blacklistPowderKegs);
+
+            return closest != null ? closest.Item2 : null;
+        }
+
+        /// <summary>
+        /// Recursive call to find the closest linked powder keg.
+        /// </summary>
+        /// <param name="powderKeg">The powder keg.</param>
+        /// <param name="useParrley">if set to <c>true</c> [use parrley].</param>
+        /// <param name="explodable">if set to <c>true</c> [explodable].</param>
+        /// <param name="blacklistPowderKegs">The blacklist powder kegs.</param>
+        /// <returns></returns>
+        private Tuple<float, PowderKeg> RecursiveClosestLinkedPowderKeg(PowderKeg powderKeg, bool useParrley, bool explodable, ICollection<int> blacklistPowderKegs)
+        {
+            blacklistPowderKegs.Add(powderKeg.NetworkId);
+
+            var linkedPowderKegs = _powderKegs
+                .Where(k => !blacklistPowderKegs.Contains(k.NetworkId) && k.Minion.Distance(powderKeg.Minion) <= PowderKegLinkRadius)
+                .OrderBy(k => k.Minion.Distance(Player))
+                .ToList();
+
+            if (!linkedPowderKegs.Any())
+            {
+                return null;
+            }
+
+            Tuple<float, PowderKeg> closest = null;
+
+            foreach (var keg in linkedPowderKegs)
+            {
+                // If we want explodable powder kegs return the closest first instance
+                if (explodable)
+                {
+                    if (IsPowderKegExplodable(keg, useParrley))
+                    {
+                        return new Tuple<float, PowderKeg>(keg.Minion.Distance(Player), keg);
+                    }
+                }
+
+                // Get the closest linked powder keg
+                var closestPowderKeg = RecursiveClosestLinkedPowderKeg(keg, useParrley, explodable, blacklistPowderKegs);
+                if (closestPowderKeg == null)
+                {
+                    continue;
+                }
+
+                // Check if the closest powder keg is explodable
+                if (explodable && IsPowderKegExplodable(closestPowderKeg.Item2, useParrley))
+                {
+                    return closestPowderKeg;
+                }
+
+                // If closer than closest version update
+                if (closest == null || closest.Item1 < closestPowderKeg.Item1)
+                {
+                    closest = closestPowderKeg;
+                }
+            }
+
+            return null;
         }
 
         /// <summary>
