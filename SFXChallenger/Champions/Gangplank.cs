@@ -35,7 +35,7 @@ namespace SFXChallenger.Champions
         /// <summary>
         /// The powder keg explosion radius
         /// </summary>
-        private const float PowderKegExplosionRadius = 390f;
+        private const float PowderKegExplosionRadius = 400f;
 
         /// <summary>
         /// The powder keg link radius
@@ -231,6 +231,7 @@ namespace SFXChallenger.Champions
         /// </summary>
         protected override void Harass()
         {
+
             if (!ResourceManager.Check("harass"))
             {
                 return;
@@ -255,18 +256,14 @@ namespace SFXChallenger.Champions
             if (useQ)
             {
                 var target = TargetSelector.GetTarget(Q.Range);
-                if (target == null)
+                if (target != null)
                 {
-                    return;
+                    var hasPowderKegsNear = _powderKegs.Any(k => k.Minion.Distance(target) <= PowderKegLinkRadius + PowderKegExplosionRadius);
+                    if (!hasPowderKegsNear)
+                    {
+                        Casting.TargetSkill(target, Q);
+                    }
                 }
-
-                var hasPowderKegsNear = _powderKegs.Any(k => k.Minion.Distance(target) <= PowderKegLinkRadius + PowderKegExplosionRadius);
-                if (hasPowderKegsNear)
-                {
-                    return;
-                }
-
-                Casting.TargetSkill(target, Q);
             }
 
             if (useE)
@@ -278,20 +275,16 @@ namespace SFXChallenger.Champions
                 //{
                 //    return;
                 //}
-
-                var target = TargetSelector.GetTarget(Q.Range + (maximumBounces * PowderKegLinkRadius));
-                if (target == null)
+                var target = TargetSelector.GetTarget(MaxRange);
+                if (target != null)
                 {
-                    return;
-                }
 
-                var bestPosition = GetBestPowderKegPosition(target, useParrley);
-                if (bestPosition == default(Vector3))
-                {
-                    return;
+                    var bestPosition = GetBestPowderKegPosition(target, useParrley);
+                    if (bestPosition != default(Vector3))
+                    {
+                        E.Cast(bestPosition);
+                    }
                 }
-
-                E.Cast(bestPosition);
             }
         }        
 
@@ -499,6 +492,9 @@ namespace SFXChallenger.Champions
                         Drawing.DrawText(healthBarPosition.X + 5, healthBarPosition.Y - 30, Color.White,
                             string.Format("{0:0.00}", remainder / 1000));
                     }
+
+                    Drawing.DrawCircle(powderKeg.Minion.Position, PowderKegLinkRadius, Color.IndianRed);
+                    Drawing.DrawCircle(powderKeg.Minion.Position, PowderKegExplosionRadius, Color.DarkRed);
                 }
             }
             catch (Exception ex)
@@ -571,7 +567,9 @@ namespace SFXChallenger.Champions
                 }
 
                 var bestPosition = availablePositions
-                    .Where(p => targetPrediction.Distance(p) <= PowderKegExplosionRadius)
+                    .Where(p => p.Distance(Player.Position) < E.Range 
+                            && targetPrediction.Distance(p) <= PowderKegExplosionRadius
+                            && !_powderKegs.Any(k => k.Minion.Distance(p) < PowderKegExplosionRadius))
                     .OrderBy(p => targetPrediction.Distance(p))
                     .FirstOrDefault();
 
@@ -580,6 +578,7 @@ namespace SFXChallenger.Champions
             catch (Exception ex)
             {
                 Console.WriteLine(ex.Message);
+                Global.Logger.AddItem(new LogItem(ex));
             }
 
             return default(Vector3);
@@ -595,7 +594,7 @@ namespace SFXChallenger.Champions
             var positions = new List<Vector3>();
 
             const double angle = 360/30f*Math.PI/180.0f;
-            const float step = PowderKegLinkRadius*2/8f;
+            const float step = (PowderKegLinkRadius+(PowderKegExplosionRadius/2))*2/8f;
 
             for (var index = 0; index < 30; index++)
             {
@@ -607,7 +606,7 @@ namespace SFXChallenger.Champions
                 }
             }
 
-            return positions.Where(p => !p.IsWall() && p.Distance(Player.Position) <= E.Range).ToList();
+            return positions.Where(p => p.IsValid() && !p.IsWall()).ToList();
         }
 
         //private static IEnumerable<Vector2> GetBestPowderKegPositions(PowderKeg powderKeg, GameObject target)
