@@ -45,17 +45,34 @@ namespace SFXChallenger.SFXTargetSelector
     public static class TargetSelector
     {
         private static Menu _menu;
+        private static TargetSelectorModeType _mode;
 
         static TargetSelector()
         {
             Mode = TargetSelectorModeType.Weights;
         }
 
-        public static TargetSelectorModeType Mode { get; set; }
+        public static TargetSelectorModeType Mode
+        {
+            get { return _mode; }
+            set
+            {
+                _mode = value;
+                if (_menu != null)
+                {
+                    _menu.Item(_menu.Name + ".force-focus-weight").ShowItem = _mode == TargetSelectorModeType.Weights;
+                }
+            }
+        }
 
         public static bool ForceFocus
         {
             get { return _menu != null && _menu.Item(_menu.Name + ".force-focus").GetValue<bool>(); }
+        }
+
+        public static bool ForceFocusWeight
+        {
+            get { return _menu != null && _menu.Item(_menu.Name + ".force-focus-weight").GetValue<bool>(); }
         }
 
         public static bool Focus
@@ -232,7 +249,9 @@ namespace SFXChallenger.SFXTargetSelector
                     return new List<Obj_AI_Hero> { selectedTarget };
                 }
 
-                range = Mode == TargetSelectorModeType.Weights && ForceFocus ? Weights.Range : range;
+                range = ForceFocusWeight && Mode == TargetSelectorModeType.Weights
+                    ? float.MaxValue
+                    : Mode == TargetSelectorModeType.Weights && ForceFocus ? Weights.Range : range;
 
                 var targets =
                     Humanizer.FilterTargets(Targets.Items)
@@ -246,6 +265,10 @@ namespace SFXChallenger.SFXTargetSelector
                     var t = GetOrderedChampions(targets).ToList();
                     if (t.Count > 0)
                     {
+                        if (ForceFocusWeight)
+                        {
+                            return new List<Obj_AI_Hero> { t.First().Hero };
+                        }
                         if (Selected.Target != null && Focus && t.Count > 1)
                         {
                             t = t.OrderByDescending(x => x.Hero.NetworkId.Equals(Selected.Target.NetworkId)).ToList();
@@ -280,6 +303,9 @@ namespace SFXChallenger.SFXTargetSelector
                 _menu.AddItem(new MenuItem(_menu.Name + ".focus", "Focus Selected Target").SetShared().SetValue(true));
                 _menu.AddItem(
                     new MenuItem(_menu.Name + ".force-focus", "Only Attack Selected Target").SetShared().SetValue(false));
+                _menu.AddItem(
+                    new MenuItem(_menu.Name + ".force-focus-weight", "Only Attack Highest Weight Target").SetShared()
+                        .SetValue(false));
 
                 Humanizer.AddToMenu(_menu);
 
@@ -298,6 +324,7 @@ namespace SFXChallenger.SFXTargetSelector
                     };
 
                 Mode = GetModeBySelectedIndex(_menu.Item(menu.Name + ".mode").GetValue<StringList>().SelectedIndex);
+                LeagueSharp.Common.TargetSelector.CustomTS = true;
             }
             catch (Exception ex)
             {

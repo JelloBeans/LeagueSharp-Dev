@@ -42,6 +42,7 @@ namespace SFXTargetSelector
     public static class TargetSelector
     {
         private static Menu _menu;
+        private static ModeType _mode;
 
         static TargetSelector()
         {
@@ -64,11 +65,27 @@ namespace SFXTargetSelector
             get { return Assembly.GetEntryAssembly().GetName().Version; }
         }
 
-        public static ModeType Mode { get; set; }
+        public static ModeType Mode
+        {
+            get { return _mode; }
+            set
+            {
+                _mode = value;
+                if (_menu != null)
+                {
+                    _menu.Item(_menu.Name + ".force-focus-weight").ShowItem = _mode == ModeType.Weights;
+                }
+            }
+        }
 
         public static bool ForceFocus
         {
             get { return _menu != null && _menu.Item(_menu.Name + ".force-focus").GetValue<bool>(); }
+        }
+
+        public static bool ForceFocusWeight
+        {
+            get { return _menu != null && _menu.Item(_menu.Name + ".force-focus-weight").GetValue<bool>(); }
         }
 
         public static bool Focus
@@ -205,7 +222,9 @@ namespace SFXTargetSelector
                 return new List<Obj_AI_Hero> { selectedTarget };
             }
 
-            range = Mode == ModeType.Weights && ForceFocus ? Weights.Range : range;
+            range = ForceFocusWeight && Mode == ModeType.Weights
+                ? float.MaxValue
+                : Mode == ModeType.Weights && ForceFocus ? Weights.Range : range;
 
             var targets =
                 Humanizer.FilterTargets(Targets.Items)
@@ -218,6 +237,10 @@ namespace SFXTargetSelector
                 var t = GetOrderedChampions(targets).ToList();
                 if (t.Count > 0)
                 {
+                    if (ForceFocusWeight)
+                    {
+                        return new List<Obj_AI_Hero> { t.First().Hero };
+                    }
                     if (Selected.Target != null && Focus && t.Count > 1)
                     {
                         t = t.OrderByDescending(x => x.Hero.NetworkId.Equals(Selected.Target.NetworkId)).ToList();
@@ -233,7 +256,7 @@ namespace SFXTargetSelector
         {
             _menu = menu.AddSubMenu(new Menu("Target Selector", "sfx.ts"));
 
-            var drawingMenu = _menu.AddSubMenu(new Menu("Drawings", menu.Name + ".drawing"));
+            var drawingMenu = _menu.AddSubMenu(new Menu("Drawings", _menu.Name + ".drawing"));
 
             drawingMenu.AddItem(
                 new MenuItem(drawingMenu.Name + ".circle-thickness", "Circle Thickness").SetShared()
@@ -246,11 +269,14 @@ namespace SFXTargetSelector
             _menu.AddItem(new MenuItem(_menu.Name + ".focus", "Focus Selected Target").SetShared().SetValue(true));
             _menu.AddItem(
                 new MenuItem(_menu.Name + ".force-focus", "Only Attack Selected Target").SetShared().SetValue(false));
+            _menu.AddItem(
+                new MenuItem(_menu.Name + ".force-focus-weight", "Only Attack Highest Weight Target").SetShared()
+                    .SetValue(false));
 
             Humanizer.AddToMenu(_menu);
 
             _menu.AddItem(
-                new MenuItem(menu.Name + ".mode", "Mode").SetShared()
+                new MenuItem(_menu.Name + ".mode", "Mode").SetShared()
                     .SetValue(
                         new StringList(
                             new[]
@@ -264,7 +290,7 @@ namespace SFXTargetSelector
                     Mode = GetModeBySelectedIndex(args.GetNewValue<StringList>().SelectedIndex);
                 };
 
-            Mode = GetModeBySelectedIndex(_menu.Item(menu.Name + ".mode").GetValue<StringList>().SelectedIndex);
+            Mode = GetModeBySelectedIndex(_menu.Item(_menu.Name + ".mode").GetValue<StringList>().SelectedIndex);
             LeagueSharp.Common.TargetSelector.CustomTS = true;
         }
     }

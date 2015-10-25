@@ -37,15 +37,8 @@ namespace SFXHumanizer_Pro
 {
     internal class SFXHumanizerPro
     {
-        private readonly CryptoRandom _random = new CryptoRandom();
-        private readonly Dictionary<GameObjectOrder, Sequence> _sequences = new Dictionary<GameObjectOrder, Sequence>();
-
-        private readonly List<SpellSlot> _spells = new List<SpellSlot>
+        private readonly List<SpellSlot> _items = new List<SpellSlot>
         {
-            SpellSlot.Q,
-            SpellSlot.W,
-            SpellSlot.E,
-            SpellSlot.R,
             SpellSlot.Item1,
             SpellSlot.Item2,
             SpellSlot.Item3,
@@ -55,12 +48,30 @@ namespace SFXHumanizer_Pro
             SpellSlot.Trinket
         };
 
+        private readonly CryptoRandom _random = new CryptoRandom();
+        private readonly Dictionary<GameObjectOrder, bool> _randomizedOrders = new Dictionary<GameObjectOrder, bool>();
+        private readonly Dictionary<SpellSlot, bool> _randomizedSpells = new Dictionary<SpellSlot, bool>();
+        private readonly Dictionary<GameObjectOrder, Sequence> _sequences = new Dictionary<GameObjectOrder, Sequence>();
+
+        private readonly List<SpellSlot> _spells = new List<SpellSlot>
+        {
+            SpellSlot.Q,
+            SpellSlot.W,
+            SpellSlot.E,
+            SpellSlot.R
+        };
+
+        private readonly List<string> _targetTypes = new List<string> { "Cone", "Unit", "Location" };
         private int _blockedOrders;
         private int _blockedSpells;
         private Font _font;
         private bool _isCasting;
+        private Vector3 _lastAttackPosition = Vector3.Zero;
+        private GameObject _lastAttackTarget;
+        private Vector3 _lastCastPosition = Vector3.Zero;
+        private int _lastFlashCast;
+        private int _lastItemCast;
         private int _lastSpellCast;
-        private Vector3 _lastSpellPosition;
         private Menu _menu;
 
         public SFXHumanizerPro()
@@ -79,27 +90,59 @@ namespace SFXHumanizer_Pro
                     new MenuItem(drawingMenu.Name + ".top", "Offset Top").SetValue(new Slider(100, 0, Drawing.Height)));
                 drawingMenu.AddItem(
                     new MenuItem(drawingMenu.Name + ".right", "Offset Right").SetValue(
-                        new Slider(Drawing.Width - 25, 0, Drawing.Width)));
+                        new Slider(Drawing.Width - 20, 0, Drawing.Width)));
                 drawingMenu.AddItem(
-                    new MenuItem(drawingMenu.Name + ".size", "Font Size").SetValue(new Slider(20, 5, 30)));
+                    new MenuItem(drawingMenu.Name + ".size", "Font Size").SetValue(new Slider(17, 5, 30)));
                 drawingMenu.AddItem(new MenuItem(drawingMenu.Name + ".color", "Color").SetValue(Color.Lime));
                 drawingMenu.AddItem(new MenuItem(drawingMenu.Name + ".spells", "Blocked Spells").SetValue(true));
                 drawingMenu.AddItem(new MenuItem(drawingMenu.Name + ".orders", "Blocked Orders").SetValue(true));
 
                 var spellMenu = _menu.AddSubMenu(new Menu("Spells", _menu.Name + ".spells"));
-                spellMenu.AddItem(new MenuItem(spellMenu.Name + ".delay", "Average Delay").SetValue(new Slider(100, 0, 500)));
-                spellMenu.AddItem(new MenuItem(spellMenu.Name + ".range-delay", "Dynamic Range Delay %").SetValue(new Slider(100, 0, 200)));
-                spellMenu.AddItem(new MenuItem(spellMenu.Name + ".position", "Randomized Position").SetValue(new Slider(10, 0, 50)));
-                spellMenu.AddItem(new MenuItem(spellMenu.Name + ".checks", "Additional Checks").SetValue(true));
-                spellMenu.AddItem(new MenuItem(spellMenu.Name + ".screen", "Block Offscreen").SetValue(false));
+
+                var blackListMenu =
+                    spellMenu.AddSubMenu(
+                        new Menu("Blacklist", spellMenu.Name + ".blacklist-" + ObjectManager.Player.ChampionName));
+                foreach (var spell in _spells)
+                {
+                    blackListMenu.AddItem(
+                        new MenuItem(blackListMenu.Name + "." + spell, spell.ToString()).SetValue(false));
+                }
+
+                spellMenu.AddItem(
+                    new MenuItem(spellMenu.Name + ".delay", "Average Delay").SetValue(new Slider(75, 0, 500))
+                        .SetTooltip("Delay between spells."));
+                spellMenu.AddItem(
+                    new MenuItem(spellMenu.Name + ".range-delay", "Dynamic Range Delay %").SetValue(
+                        new Slider(100, 0, 200)).SetTooltip("0 = Disabled. As higher the value as higher is the delay."));
+                spellMenu.AddItem(
+                    new MenuItem(spellMenu.Name + ".position", "Randomized Position").SetValue(new Slider(10, 0, 25))
+                        .SetTooltip("Randomize the cast position based on the value."));
+                spellMenu.AddItem(
+                    new MenuItem(spellMenu.Name + ".checks", "Additional Checks").SetValue(true)
+                        .SetTooltip("Checks if Chat / Shop is open and if you can cast."));
+                spellMenu.AddItem(
+                    new MenuItem(spellMenu.Name + ".screen", "Block Offscreen").SetValue(false)
+                        .SetTooltip("Block all spells which are outside of your screen / view."));
+                spellMenu.AddItem(
+                    new MenuItem(spellMenu.Name + ".flash", "Disable after Flash").SetValue(new Slider(3, 0, 10))
+                        .SetTooltip("Disable humanizer after flash for x seconds."));
 
                 var orderMenu = _menu.AddSubMenu(new Menu("Orders", _menu.Name + ".orders"));
                 orderMenu.AddItem(
-                    new MenuItem(orderMenu.Name + ".clicks", "Max. Average Per Second").SetValue(new Slider(10, 1, 20)));
+                    new MenuItem(orderMenu.Name + ".clicks", "Max. Average Per Second").SetValue(new Slider(10, 1, 20))
+                        .SetTooltip("Average of maximum orders per second."));
                 orderMenu.AddItem(
-                    new MenuItem(orderMenu.Name + ".position", "Randomized Position").SetValue(new Slider(20, 0, 50)));
-                orderMenu.AddItem(new MenuItem(orderMenu.Name + ".sharp-turn", "Check Sharp Turns").SetValue(true));
-                orderMenu.AddItem(new MenuItem(orderMenu.Name + ".screen", "Block Offscreen").SetValue(false));
+                    new MenuItem(orderMenu.Name + ".range-delay", "Dynamic Attack Range Delay %").SetValue(
+                        new Slider(100, 0, 200)).SetTooltip("0 = Disabled. As higher the value as higher is the delay."));
+                orderMenu.AddItem(
+                    new MenuItem(orderMenu.Name + ".position", "Randomized Position").SetValue(new Slider(20, 0, 50))
+                        .SetTooltip("Randomize the click position based on the value."));
+                orderMenu.AddItem(
+                    new MenuItem(orderMenu.Name + ".sharp-turn", "Check Sharp Turns").SetValue(true)
+                        .SetTooltip("Reduce the delay if you run in a other direction."));
+                orderMenu.AddItem(
+                    new MenuItem(orderMenu.Name + ".screen", "Block Offscreen").SetValue(false)
+                        .SetTooltip("Block all orders which are outside of your screen / view."));
 
                 _menu.AddItem(new MenuItem(_menu.Name + ".enabled", "Enabled").SetValue(true));
 
@@ -207,9 +250,22 @@ namespace SFXHumanizer_Pro
                 {
                     return;
                 }
-                if (sender.IsMe && (args.SData.IsAutoAttack() || _spells.Any(s => s.Equals(args.Slot))))
+                if (sender.IsMe)
                 {
-                    _isCasting = false;
+                    if (args.SData.Name.Equals("SummonerFlash", StringComparison.OrdinalIgnoreCase))
+                    {
+                        _lastFlashCast = Utils.GameTimeTickCount;
+                    }
+                    var isSpell = _spells.Any(s => s.Equals(args.Slot));
+                    var isItem = _items.Any(s => s.Equals(args.Slot));
+                    if (isSpell || isItem || args.SData.IsAutoAttack())
+                    {
+                        _isCasting = false;
+                    }
+                    if (isSpell || isItem)
+                    {
+                        _randomizedSpells[args.Slot] = false;
+                    }
                 }
             }
             catch (Exception ex)
@@ -222,10 +278,6 @@ namespace SFXHumanizer_Pro
         {
             try
             {
-                if (!_menu.Item(_menu.Name + ".enabled").GetValue<bool>())
-                {
-                    return;
-                }
                 if (sender.Owner.IsMe)
                 {
                     _isCasting = false;
@@ -237,16 +289,41 @@ namespace SFXHumanizer_Pro
             }
         }
 
+        private bool IsSpellEnabled(SpellSlot slot)
+        {
+            var item = _menu.Item(_menu.Name + ".spells.blacklist-" + ObjectManager.Player.ChampionName + "." + slot);
+            return item != null && !item.GetValue<bool>();
+        }
+
         private void OnSpellbookCastSpell(Spellbook sender, SpellbookCastSpellEventArgs args)
         {
             try
             {
-                if (!_menu.Item(_menu.Name + ".enabled").GetValue<bool>())
+                if (!sender.Owner.IsMe || !_menu.Item(_menu.Name + ".enabled").GetValue<bool>())
                 {
                     return;
                 }
-                if (!sender.Owner.IsMe || !_spells.Any(s => s.Equals(args.Slot)))
+
+                var flash = _menu.Item(_menu.Name + ".spells.flash").GetValue<Slider>().Value;
+                if (flash > 0 && Utils.GameTimeTickCount - _lastFlashCast <= flash * 1000)
                 {
+                    return;
+                }
+
+                var isSpell = _spells.Any(s => s.Equals(args.Slot) && IsSpellEnabled(s));
+                var isItem = _items.Any(s => s.Equals(args.Slot));
+                if (!isSpell && !isItem)
+                {
+                    return;
+                }
+
+                if (!_randomizedSpells.ContainsKey(args.Slot))
+                {
+                    _randomizedSpells[args.Slot] = false;
+                }
+                if (_randomizedSpells[args.Slot])
+                {
+                    _randomizedSpells[args.Slot] = false;
                     return;
                 }
 
@@ -258,7 +335,11 @@ namespace SFXHumanizer_Pro
 
                 var position = args.Target != null
                     ? args.Target.Position
-                    : (args.StartPosition.IsValid() ? args.StartPosition : args.EndPosition);
+                    : (args.StartPosition.IsValid()
+                        ? args.StartPosition
+                        : (args.EndPosition.IsValid() ? args.EndPosition : ObjectManager.Player.Position));
+
+                #region Screen
 
                 if (_menu.Item(_menu.Name + ".spells.screen").GetValue<bool>() && position.IsValid() &&
                     !position.IsOnScreen())
@@ -268,6 +349,10 @@ namespace SFXHumanizer_Pro
                     return;
                 }
 
+                #endregion Screen
+
+                #region Checks
+
                 if (_menu.Item(_menu.Name + ".spells.checks").GetValue<bool>())
                 {
                     if (Utils.GameTimeTickCount - _lastSpellCast >=
@@ -275,8 +360,8 @@ namespace SFXHumanizer_Pro
                     {
                         _isCasting = false;
                     }
-                    if (MenuGUI.IsShopOpen || MenuGUI.IsChatOpen || _isCasting ||
-                        ObjectManager.Player.Spellbook.IsCastingSpell || !spell.IsReady())
+                    if (MenuGUI.IsShopOpen || MenuGUI.IsChatOpen ||
+                        ((_isCasting || ObjectManager.Player.Spellbook.IsCastingSpell) && isSpell) || !spell.IsReady())
                     {
                         args.Process = false;
                         _blockedSpells++;
@@ -284,53 +369,46 @@ namespace SFXHumanizer_Pro
                     }
                 }
 
+                #endregion Checks
+
+                #region Delay
+
                 var defaultDelay = _menu.Item(_menu.Name + ".spells.delay").GetValue<Slider>().Value;
                 var delay = Math.Max(
                     _random.Next((int) (defaultDelay * 0.85f), (int) (defaultDelay * 1.15f)),
                     _random.Next((int) (Game.Ping * 0.45f), (int) (Game.Ping * 0.55f)));
-                var type = spell.SData.TargettingType;
-                var rangeDelayPercent = _menu.Item(_menu.Name + ".spells.range-delay").GetValue<Slider>().Value;
-                if (rangeDelayPercent > 0 && _lastSpellPosition.IsValid())
+                var type = spell.SData.TargettingType.ToString();
+                if (_targetTypes.Any(t => type.Contains(t)))
                 {
-                    if (type == SpellDataTargetType.Cone || type.ToString().Contains("Location") ||
-                        type.ToString().Contains("Unit"))
-                    {
-                        if (position.IsValid() &&
-                            (Helpers.AngleBetween(_lastSpellPosition, position) > _random.Next(8, 13) ||
-                             type.ToString().Contains("Unit")))
-                        {
-                            var rangeDelay =
-                                (int)
-                                    ((_lastSpellPosition.Distance(position) * _random.Next(75, 86) / 100) / 100 *
-                                     rangeDelayPercent);
-                            delay = Math.Min(_random.Next(1400, 1500), Math.Max(delay, rangeDelay));
-                        }
-                    }
+                    delay = Math.Max(
+                        delay,
+                        GetRangeDelay(
+                            position, _lastCastPosition,
+                            _menu.Item(_menu.Name + ".spells.range-delay").GetValue<Slider>().Value));
                 }
 
-                if (Utils.GameTimeTickCount - _lastSpellCast <= delay)
+                if (Utils.GameTimeTickCount - (isSpell ? _lastSpellCast : _lastItemCast) <= delay)
                 {
                     args.Process = false;
                     _blockedSpells++;
                     return;
                 }
 
-                _isCasting = true;
-                _lastSpellCast = Utils.GameTimeTickCount;
+                #endregion Delay
 
-                if (type == SpellDataTargetType.Cone || type.ToString().Contains("Location") ||
-                    type.ToString().Contains("Unit"))
-                {
-                    _lastSpellPosition = args.Target != null
-                        ? args.Target.Position
-                        : (args.StartPosition.IsValid() ? args.StartPosition : args.EndPosition);
-                }
+                _lastCastPosition = position.IsValid() && _targetTypes.Any(t => type.Contains(t))
+                    ? position
+                    : Vector3.Zero;
 
-                if (args.Target == null && (type == SpellDataTargetType.Cone || type.ToString().Contains("Location")))
+                #region Randomize
+
+                var randomPosition = _menu.Item(_menu.Name + ".spells.position").GetValue<Slider>().Value;
+                if (randomPosition > 0 && args.Target == null && (type.Contains("Cone") || type.Contains("Location")) &&
+                    !_randomizedSpells[args.Slot])
                 {
                     var startPos = Vector3.Zero;
                     var endPos = Vector3.Zero;
-                    var randomPosition = _menu.Item(_menu.Name + ".spells.position").GetValue<Slider>().Value;
+
                     if (args.StartPosition.IsValid())
                     {
                         startPos = _random.Randomize(args.StartPosition, randomPosition);
@@ -339,21 +417,35 @@ namespace SFXHumanizer_Pro
                     {
                         endPos = _random.Randomize(args.EndPosition, randomPosition);
                     }
-                    if (startPos.IsValid() && endPos.IsValid())
+                    if (startPos.IsValid() || endPos.IsValid())
                     {
-                        ObjectManager.Player.Spellbook.CastSpell(args.Slot, startPos, endPos, false);
                         args.Process = false;
+                        _randomizedSpells[args.Slot] = true;
+                        if (startPos.IsValid() && endPos.IsValid())
+                        {
+                            ObjectManager.Player.Spellbook.CastSpell(args.Slot, startPos, endPos);
+                        }
+                        else if (startPos.IsValid())
+                        {
+                            ObjectManager.Player.Spellbook.CastSpell(args.Slot, startPos);
+                        }
+                        else if (endPos.IsValid())
+                        {
+                            ObjectManager.Player.Spellbook.CastSpell(args.Slot, endPos);
+                        }
                     }
-                    else if (startPos.IsValid())
-                    {
-                        ObjectManager.Player.Spellbook.CastSpell(args.Slot, startPos, false);
-                        args.Process = false;
-                    }
-                    else if (endPos.IsValid())
-                    {
-                        ObjectManager.Player.Spellbook.CastSpell(args.Slot, endPos, false);
-                        args.Process = false;
-                    }
+                }
+
+                #endregion Randomize
+
+                _isCasting = true;
+                if (isSpell)
+                {
+                    _lastSpellCast = Utils.GameTimeTickCount;
+                }
+                else
+                {
+                    _lastItemCast = Utils.GameTimeTickCount;
                 }
             }
             catch (Exception ex)
@@ -361,6 +453,20 @@ namespace SFXHumanizer_Pro
                 args.Process = true;
                 Console.WriteLine(ex);
             }
+        }
+
+        private int GetRangeDelay(Vector3 position, Vector3 lastPosition, int percent)
+        {
+            if (percent > 0 && position.IsValid() && lastPosition.IsValid())
+            {
+                var distance = position.Distance(lastPosition);
+                if (Helpers.AngleBetween(lastPosition, position) > _random.Next(10, 16) && distance > 250)
+                {
+                    var rangeDelay = (int) ((distance * _random.Next(75, 86) / 100) / 100 * percent);
+                    return Math.Min(_random.Next(1250, 1500), rangeDelay);
+                }
+            }
+            return 0;
         }
 
         private void OnObjAiBaseIssueOrder(Obj_AI_Base sender, GameObjectIssueOrderEventArgs args)
@@ -375,6 +481,15 @@ namespace SFXHumanizer_Pro
                      ObjectManager.Player.Pet != null && ObjectManager.Player.Pet.NetworkId.Equals(sender.NetworkId)) &&
                     !args.IsAttackMove)
                 {
+                    if (!_randomizedOrders.ContainsKey(args.Order))
+                    {
+                        _randomizedOrders[args.Order] = false;
+                    }
+                    if (_randomizedOrders[args.Order])
+                    {
+                        _randomizedOrders[args.Order] = false;
+                        return;
+                    }
                     var position = args.Target != null ? args.Target.Position : args.TargetPosition;
                     if (_menu.Item(_menu.Name + ".orders.screen").GetValue<bool>() && !position.IsOnScreen())
                     {
@@ -384,25 +499,47 @@ namespace SFXHumanizer_Pro
                     }
                     UpdateSequence(args.Order);
                     var sequence = _sequences[args.Order];
-                    var isSharpTurn = _menu.Item(_menu.Name + ".orders.sharp-turn").GetValue<bool>() &&
+                    var delay = sequence.Items[sequence.Index];
+                    var isSharpTurn = false;
+
+                    if ((args.Order == GameObjectOrder.AttackTo || args.Order == GameObjectOrder.AttackUnit) &&
+                        (_lastAttackTarget == null || args.Target == null ||
+                         !_lastAttackTarget.NetworkId.Equals(args.Target.NetworkId)))
+                    {
+                        var percent = _menu.Item(_menu.Name + ".orders.range-delay").GetValue<Slider>().Value;
+                        delay = Math.Max(
+                            delay,
+                            Math.Max(
+                                GetRangeDelay(position, _lastAttackPosition, percent),
+                                GetRangeDelay(position, _lastCastPosition, percent)));
+                    }
+                    else
+                    {
+                        isSharpTurn = _menu.Item(_menu.Name + ".orders.sharp-turn").GetValue<bool>() &&
                                       Helpers.IsSharpTurn(position, _random.Next(80, 101));
-                    if (Utils.GameTimeTickCount - sequence.LastIndexChange <=
-                        (isSharpTurn ? sequence.Items[sequence.Index] / 2 : sequence.Items[sequence.Index]))
+                    }
+
+                    if (Utils.GameTimeTickCount - sequence.LastIndexChange <= (isSharpTurn ? delay / 2 : delay))
                     {
                         args.Process = false;
                         _blockedOrders++;
                     }
                     else
                     {
-                        sequence.Index++;
-                        if (args.Target == null && args.TargetPosition.IsValid())
+                        if (args.Order == GameObjectOrder.AttackTo || args.Order == GameObjectOrder.AttackUnit)
                         {
+                            _lastAttackPosition = position.IsValid() ? position : Vector3.Zero;
+                            _lastAttackTarget = args.Target;
+                        }
+                        sequence.Index++;
+                        if (args.Target == null && position.IsValid() && !_randomizedOrders[args.Order])
+                        {
+                            args.Process = false;
+                            _randomizedOrders[args.Order] = true;
                             ObjectManager.Player.IssueOrder(
                                 args.Order,
                                 _random.Randomize(
-                                    args.TargetPosition,
-                                    _menu.Item(_menu.Name + ".orders.position").GetValue<Slider>().Value), false);
-                            args.Process = false;
+                                    position, _menu.Item(_menu.Name + ".orders.position").GetValue<Slider>().Value));
                         }
                     }
                 }
@@ -432,9 +569,7 @@ namespace SFXHumanizer_Pro
                 _sequences[order] = new Sequence();
             }
             var sequence = _sequences[order];
-            if (sequence.Items == null || sequence.Index >= sequence.Items.Length ||
-                Utils.GameTimeTickCount - sequence.LastItemsChange >
-                _random.Next((int) (1000f * 0.975f), (int) (1000f * 1.025f)))
+            if (sequence.Items == null || sequence.Index >= sequence.Items.Length)
             {
                 sequence.Items = CreateSequence(_menu.Item(_menu.Name + ".orders.clicks").GetValue<Slider>().Value);
             }
