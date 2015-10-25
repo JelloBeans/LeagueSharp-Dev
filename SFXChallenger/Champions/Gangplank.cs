@@ -127,7 +127,14 @@ namespace SFXChallenger.Champions
         private void CreateComboMenu()
         {
             var comboMenu = Menu.AddSubMenu(new Menu("Combo", string.Format("{0}.combo", Menu.Name)));
+
             comboMenu.AddItem(new MenuItem(string.Format("{0}.q", comboMenu.Name), "Use Q").SetValue(true));
+            comboMenu.AddItem(new MenuItem(string.Format("{0}.separator", comboMenu.Name), string.Empty));
+
+            comboMenu.AddItem(new MenuItem(string.Format("{0}.e", comboMenu.Name), "Use E").SetValue(true));
+            comboMenu.AddItem(new MenuItem(string.Format("{0}.e-stacks", comboMenu.Name), "E Min. Stacks").SetValue(new Slider(1, 0, 5)));
+
+            comboMenu.AddItem(new MenuItem(string.Format("{0}.q-e", comboMenu.Name), "Use Q on E").SetValue(true));
         }
 
         /// <summary>
@@ -222,6 +229,30 @@ namespace SFXChallenger.Champions
         /// </summary>
         protected override void Combo()
         {
+            var useQ = Menu.Item(Menu.Name + ".combo.q").GetValue<bool>();
+            var useE = Menu.Item(Menu.Name + ".combo.e").GetValue<bool>();
+            var useParrley = Menu.Item(Menu.Name + ".combo.q-e").GetValue<bool>();
+
+            ComboExplodePowderKegs(useParrley);
+
+            if (useQ)
+            {
+                var target = TargetSelector.GetTarget(Q.Range);
+                if (target != null)
+                {
+                    var hasPowderKegsNear = _powderKegs.Any(k => k.Minion.Distance(target) <= PowderKegLinkRadius + PowderKegExplosionRadius);
+                    if (!hasPowderKegsNear)
+                    {
+                        Casting.TargetSkill(target, Q);
+                    }
+                }
+            }
+
+            if (useE)
+            {
+                var minEStacks = Menu.Item(Menu.Name + ".combo.e-stacks").GetValue<Slider>().Value;
+                CastPowderKeg(minEStacks, useParrley);
+            }
         }
 
         /// <summary>
@@ -267,22 +298,7 @@ namespace SFXChallenger.Champions
             if (useE)
             {
                 var minEStacks = Menu.Item(Menu.Name + ".harass.e-stacks").GetValue<Slider>().Value;
-
-                if (E.Instance.Ammo <= minEStacks)
-                {
-                    return;
-                }
-
-                var target = TargetSelector.GetTarget(MaxRange);
-                if (target != null)
-                {
-
-                    var bestPosition = GetBestPowderKegPosition(target, useParrley);
-                    if (bestPosition != default(Vector3))
-                    {
-                        E.Cast(bestPosition);
-                    }
-                }
+                CastPowderKeg(minEStacks, useParrley);
             }
         }        
 
@@ -491,8 +507,8 @@ namespace SFXChallenger.Champions
                             string.Format("{0:0.00}", remainder / 1000));
                     }
 
-                    Render.Circle.DrawCircle(powderKeg.Minion.Position, PowderKegExplosionRadius, Color.DarkRed);
-                    Render.Circle.DrawCircle(powderKeg.Minion.Position, PowderKegLinkRadius, Color.CornflowerBlue);
+                    //Render.Circle.DrawCircle(powderKeg.Minion.Position, PowderKegExplosionRadius, Color.DarkRed);
+                    //Render.Circle.DrawCircle(powderKeg.Minion.Position, PowderKegLinkRadius, Color.CornflowerBlue);
                 }
             }
             catch (Exception ex)
@@ -531,6 +547,39 @@ namespace SFXChallenger.Champions
         #endregion
 
         #region Powder Kegs
+
+        /// <summary>
+        /// Casts a powder keg for the best target
+        /// </summary>
+        /// <param name="minEStacks">The minimum stacks we should leave.</param>
+        /// <param name="useParrley">if set to [true] use parrley to find best barrel locations</param>
+        private void CastPowderKeg(int minEStacks, bool useParrley)
+        {
+            if (E.Instance.Ammo <= minEStacks)
+            {
+                return;
+            }
+
+            if (_lastPowderKegTracker != null)
+            {
+                if (!_lastPowderKegTracker.Ready)
+                {
+                    return;
+                }
+            }
+
+            var target = TargetSelector.GetTarget(MaxRange);
+            if (target == null)
+            {
+                return;
+            }
+
+            var bestPosition = GetBestPowderKegPosition(target, useParrley);
+            if (bestPosition != default(Vector3))
+            {
+                E.Cast(bestPosition);
+            }
+        }
 
         /// <summary>
         /// Gets the best position to place a powder keg.
@@ -577,7 +626,12 @@ namespace SFXChallenger.Champions
             return default(Vector3);
         }
 
-        private IEnumerable<Vector3> GetBestLinkedPowderKegPositions(Vector3 position)
+        /// <summary>
+        /// Gets the best linked powder keg positions
+        /// </summary>
+        /// <param name="position">The main powder keg position</param>
+        /// <returns></returns>
+        private static IEnumerable<Vector3> GetBestLinkedPowderKegPositions(Vector3 position)
         {
             if (!position.IsValid())
             {
@@ -600,6 +654,38 @@ namespace SFXChallenger.Champions
             }
 
             return positions.Where(p => p.IsValid() && !p.IsWall() && p.Distance(position) <= PowderKegLinkRadius).ToList();
+        }
+
+        /// <summary>
+        /// Explode powder kegs in combo
+        /// </summary>
+        /// <param name="useParrley">if set to <c>true</c> [use useParrley].</param>
+        private void ComboExplodePowderKegs(bool useParrley)
+        {
+            if (!Q.IsReady())
+            {
+                return;
+            }
+
+            var target = TargetSelector.GetTarget(MaxRange);
+            if (target == null)
+            {
+                return;
+            }
+
+            var powderKeg = FindClosestPowderKeg(target.Position, useParrley, true);
+
+            if (powderKeg != null)
+            {
+                if (useParrley)
+                {
+                    Casting.TargetSkill(powderKeg.Minion, Q);
+                }
+                else
+                {
+                    Orbwalker.ForceTarget(powderKeg.Minion);
+                }
+            }
         }
 
         /// <summary>
